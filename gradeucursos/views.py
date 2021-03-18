@@ -125,7 +125,6 @@ class GradeUcursosView(View):
         try:
             enrolled_students = User.objects.filter(
                 courseenrollment__course_id=course_key,
-                courseenrollment__is_active=1,
                 courseenrollment__mode='honor'
             ).order_by('username').values('id', 'username', 'edxloginuser__run')
         except FieldError:
