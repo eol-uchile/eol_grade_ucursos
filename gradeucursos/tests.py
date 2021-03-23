@@ -13,15 +13,15 @@ from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from student.roles import CourseInstructorRole, CourseStaffRole
-from .views import GradeUcursosView
+from .views import GradeUcursosView, GradeUcursosExportView
 from lms.djangoapps.grades.tests.utils import mock_get_score
 from lms.djangoapps.grades.tests.base import GradeTestBase
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
 import json
 
-class TestGradeUcursosViewView(GradeTestBase):
+class TestGradeUcursosView(GradeTestBase):
     def setUp(self):
-        super(TestGradeUcursosViewView, self).setUp()
+        super(TestGradeUcursosView, self).setUp()
         self.grade_factory = CourseGradeFactory()
         with patch('student.models.cc.User.save'):
             # staff user
@@ -69,16 +69,7 @@ class TestGradeUcursosViewView(GradeTestBase):
         """
         response = self.client_instructor.get(reverse('gradeucursos-export:data'))
         request = response.request
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(request['PATH_INFO'], '/gradeucursos/data')
-
-    def test_gradeucursos_get_not_logged(self):
-        """
-            Test gradeucursos get when user is not logged
-        """
-        response = self.client_anonymous.get(reverse('gradeucursos-export:data'))
-        request = response.request
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 405)
 
     @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
     def test_gradeucursos_post(self, grade):
@@ -98,7 +89,13 @@ class TestGradeUcursosViewView(GradeTestBase):
         }
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
+        r = json.loads(response._container[0].decode())
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(r['status'] , 'Generating')
+        response2 = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
+        r2 = json.loads(response2._container[0].decode())
+        self.assertEqual(response2.status_code, 200)
+        self.assertEqual(r2['status'] , 'Generated')
         report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
@@ -111,7 +108,6 @@ class TestGradeUcursosViewView(GradeTestBase):
             Test gradeucursos get when user is not logged
         """
         response = self.client_anonymous.post(reverse('gradeucursos-export:data'))
-        request = response.request
         self.assertEqual(response.status_code, 404)
 
     def test_gradeucursos_post_course_no_exists(self):
@@ -125,7 +121,8 @@ class TestGradeUcursosViewView(GradeTestBase):
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue('id="error_curso"' in response._container[0].decode())
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['error_curso'])
 
     def test_gradeucursos_post_wrong_course_id(self):
         """
@@ -138,7 +135,8 @@ class TestGradeUcursosViewView(GradeTestBase):
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue('id="error_curso"' in response._container[0].decode())
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['error_curso'])
 
     def test_gradeucursos_post_empty_course_id(self):
         """
@@ -151,7 +149,8 @@ class TestGradeUcursosViewView(GradeTestBase):
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue('id="empty_course"' in response._container[0].decode())
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['empty_course'])
 
     def test_gradeucursos_post_wrong_scale_grade(self):
         """
@@ -164,7 +163,8 @@ class TestGradeUcursosViewView(GradeTestBase):
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue('id="error_grade_type"' in response._container[0].decode())
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['error_grade_type'])
 
     def test_gradeucursos_post_user_dont_have_permission(self):
         """
@@ -176,5 +176,145 @@ class TestGradeUcursosViewView(GradeTestBase):
         }
         #grade cutoff 50%
         response = self.client_student.post(reverse('gradeucursos-export:data'), post_data)
+        self.assertEqual(response.status_code, 200)
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['user_permission'])
+
+class TestGradeUcursosExportView(GradeTestBase):
+    def setUp(self):
+        super(TestGradeUcursosExportView, self).setUp()
+        self.grade_factory = CourseGradeFactory()
+        with patch('student.models.cc.User.save'):
+            # staff user
+            self.client_instructor = Client()
+            self.client_student = Client()
+            self.client_anonymous = Client()
+            self.user_instructor = UserFactory(
+                username='instructor',
+                password='12345',
+                email='instructor@edx.org',
+                is_staff=True)
+            role = CourseInstructorRole(self.course.id)
+            role.add_users(self.user_instructor)
+            self.client_instructor.login(
+                username='instructor', password='12345')
+            self.student = UserFactory(
+                username='student',
+                password='test',
+                email='student@edx.org')
+            self.student_2 = UserFactory(
+                username='student_2',
+                password='test',
+                email='student2@edx.org')
+            # Enroll the student in the course
+            CourseEnrollmentFactory(
+                user=self.student, course_id=self.course.id, mode='honor')
+            CourseEnrollmentFactory(
+                user=self.student_2, course_id=self.course.id, mode='honor')
+            self.client_student.login(
+                username='student', password='test')
+
+    def test_gradeucursosexport_get(self):
+        """
+            Test gradeucursosexport view
+        """
+        response = self.client_instructor.get(reverse('gradeucursos-export:export'))
+        request = response.request
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(request['PATH_INFO'], '/gradeucursos/export')
+
+    def test_gradeucursosexport_get_not_logged(self):
+        """
+            Test gradeucursosexport get when user is not logged
+        """
+        response = self.client_anonymous.post(reverse('gradeucursos-export:export'))
+        self.assertEqual(response.status_code, 404)
+    
+    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
+    def test_gradeucursosexport_post(self, grade):
+        """
+            Test gradeucursosexport post normal process
+        """
+        grade.return_value = 0.5
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id)
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
+        r = json.loads(response._container[0].decode())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(r['status'] , 'Generating')
+        response_export = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
+        self.assertEqual(response_export._headers['content-type'], ('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+
+    def test_gradeucursosexport_post_course_no_exists(self):
+        """
+            Test gradeucursosexport post when course_id no exists
+        """
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': 'course-v1:eol+test+2021'
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue('id="error_curso"' in response._container[0].decode())
+
+    def test_gradeucursosexport_post_wrong_course_id(self):
+        """
+            Test gradeucursosexport post when course_id is not CourseKey
+        """
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': 'asdasd'
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue('id="error_curso"' in response._container[0].decode())
+
+    def test_gradeucursosexport_post_empty_course_id(self):
+        """
+            Test gradeucursosexport post when course_id is empty
+        """
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': ''
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue('id="empty_course"' in response._container[0].decode())
+
+    def test_gradeucursosexport_post_wrong_scale_grade(self):
+        """
+            Test gradeucursosexport post when dont exists grade_type in GRADE_TYPE_LIST
+        """
+        post_data = {
+            'grade_type': 'wrong_scale',
+            'curso': str(self.course.id)
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue('id="error_grade_type"' in response._container[0].decode())
+
+    def test_gradeucursosexport_post_user_dont_have_permission(self):
+        """
+            Test gradeucursosexport post when user dont have permission to export 
+        """
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id)
+        }
+        #grade cutoff 50%
+        response = self.client_student.post(reverse('gradeucursos-export:export'), post_data)
         self.assertEqual(response.status_code, 200)
         self.assertTrue('id="user_permission"' in response._container[0].decode())

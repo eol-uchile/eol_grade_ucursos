@@ -6,4 +6,5 @@ from .views import *
 
 urlpatterns = [
     url('data', GradeUcursosView.as_view(), name='data'),
+    url('export', GradeUcursosExportView.as_view(), name='export'),
 ]

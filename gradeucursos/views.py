@@ -25,62 +25,96 @@ import unicodecsv as csv
 from django.core.exceptions import FieldError
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
 import xlsxwriter
+from django.core.cache import cache
+from celery import current_task, task
+from lms.djangoapps.instructor_task.tasks_base import BaseInstructorTask
+from lms.djangoapps.instructor_task.api_helper import submit_task
+from functools import partial
+from time import time
+from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
+from django.db import IntegrityError, transaction
+from django.utils.translation import ugettext_noop
+from pytz import UTC
+from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
 logger = logging.getLogger(__name__)
 
 GRADE_TYPE_LIST = ['seven_scale', 'hundred_scale', 'percent_scale']
-class GradeUcursosView(View):
-    """
-        Export all student grade in .xlsx format
-    """
-    def get(self, request):
-        if not request.user.is_anonymous:
-            return render(request, 'gradeucursos/data.html')
-        else:
-            logger.error("GradeUCursos - User is Anonymous")
-        raise Http404()
 
-    def post(self, request):
-        if not request.user.is_anonymous:
-            context = {'curso': request.POST.get('curso', ""),
-                        'grade_type': request.POST.get("grade_type", "")
-                        }
-            context = self.validate_data(request.user, context)
-            if len(context) == 2:
-                report_grade = self.get_grade_report(context['curso'], context['grade_type'])
-                if report_grade is None:
-                    logger.error("GradeUCursos - Error to Generate report_grade, user: {}, context: {}".format(request.user.id, context))
-                    context['report_error'] = True
-                    return render(request, 'gradeucursos/data.html', context)
-                return self.generate_report(report_grade)
+@task(base=BaseInstructorTask, queue='edx.lms.core.low')
+def process_data(entry_id, xmodule_instance_args):
+    action_name = ugettext_noop('generated')
+    task_fn = partial(task_get_data, xmodule_instance_args)
 
-            else:
-                return render(request, 'gradeucursos/data.html', context)
-        else:
-            logger.error("GradeUCursos - User is Anonymous")
-        raise Http404()
+    return run_main_task(entry_id, task_fn, action_name)
 
-    def validate_data(self, user, context):
+
+def task_get_data(
+        _xmodule_instance_args,
+        _entry_id,
+        course_id,
+        task_input,
+        action_name):
+    course_key = course_id
+    grade_type = task_input["grade_type"]
+
+    start_time = time()
+    task_progress = TaskProgress(
+        action_name,
+        1,
+        start_time)
+
+    report_grade = GradeUcursosView().get_grade_report(task_input['course_id'], task_input['grade_type'])
+    data = {'report_grade': report_grade, 'state': ''}
+    if report_grade is None:
+        data['state'] = 'error'
+        cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 60) #1 minute
+        current_step = {'step': 'Error to uploading Data Eol Grade UCursos'}
+    else:
+        data['state'] = 'success'
+        cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 300) #5 minute
+        current_step = {'step': 'Uploading Data Eol Grade UCursos'}
+    return task_progress.update_task_state(extra_meta=current_step)
+
+
+def task_process_data(request, course_id, grade_type):
+    course_key = CourseKey.from_string(course_id)
+    task_type = 'EOL_GRADE_UCURSOS'
+    task_class = process_data
+    task_input = {'course_id': course_id, 'grade_type': grade_type}
+    task_key = "{}_{}".format(course_id, grade_type)
+
+    return submit_task(
+        request,
+        task_type,
+        task_class,
+        course_key,
+        task_input,
+        task_key)
+
+class Content(object):
+    def validate_data(self, user, data):
+        error = {}
         # valida curso
-        if context['curso'] == "":
+        if data['curso'] == "":
             logger.error("GradeUCursos - Empty course, user: {}".format(user.id))
-            context['empty_course'] = True
+            error['empty_course'] = True
        
         # valida si existe el curso
         else:
-            if not self.validate_course(context['curso']):
-                logger.error("GradeUCursos - Couse dont exists, user: {}, course_id: {}".format(user.id, context['curso']))
-                context['error_curso'] = True
+            if not self.validate_course(data['curso']):
+                logger.error("GradeUCursos - Course dont exists, user: {}, course_id: {}".format(user.id, data['curso']))
+                error['error_curso'] = True
 
-            elif not self.user_have_permission(user, context['curso']):
-                logger.error("GradeUCursos - user dont have permission in the course, course: {}, user: {}".format(context['curso'], user))
-                context['user_permission'] = True
+            elif not self.user_have_permission(user, data['curso']):
+                logger.error("GradeUCursos - user dont have permission in the course, course: {}, user: {}".format(data['curso'], user))
+                error['user_permission'] = True
 
         # si el grade_type es incorrecto
-        if not context['grade_type'] in GRADE_TYPE_LIST:
-            context['error_grade_type'] = True
-            logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, context['grade_type']))
+        if not data['grade_type'] in GRADE_TYPE_LIST:
+            error['error_grade_type'] = True
+            logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, data['grade_type']))
 
-        return context
+        return error
     
     def validate_course(self, id_curso):
         """
@@ -111,6 +145,45 @@ class GradeUcursosView(View):
             logger.error('GradeUCursos - Error in is_instructor_or_staff({}, {}), Exception {}'.format(user, str(course_key), str(e)))
             return False
 
+class GradeUcursosView(View, Content):
+    """
+        Generate and save in cache a list of all student grade
+        report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
+    """
+    @transaction.non_atomic_requests
+    def dispatch(self, args, **kwargs):
+        return super(GradeUcursosView, self).dispatch(args, **kwargs)
+
+    def post(self, request):
+        if not request.user.is_anonymous:
+            data = {
+                'curso': request.POST.get('curso', ""),
+                'grade_type': request.POST.get("grade_type", "")
+            }
+            data_error = self.validate_data(request.user, data)
+            if len(data_error) == 0:
+                return self.get_data_report(request, data['curso'], data['grade_type'])
+            else:
+                data_error['status'] = 'Error'
+                return JsonResponse(data_error)
+        else:
+            logger.error("GradeUCursos - User is Anonymous")
+        raise Http404()
+
+    def get_data_report(self, request, course_id, grade_type):
+        """
+            get data from cache or task
+        """
+        if cache.get("eol_grade_ucursos-{}-{}-data".format(course_id, grade_type)) is None:
+            try:
+                task = task_process_data(request, course_id, grade_type)
+                success_status = 'Generating'
+                return JsonResponse({"status": success_status, "task_id": task.task_id})
+            except AlreadyRunningError:
+                logger.error("GradeUCursos - Task Already Running Error, user: {}, course_id: {}".format(request.user, course_id))
+                return JsonResponse({'status': 'AlreadyRunningError'})
+        return JsonResponse({'status': 'Generated'})
+
     def get_grade_report(self, course_id, scale):
         """
             Generate list of all student grade 
@@ -121,6 +194,7 @@ class GradeUcursosView(View):
         report_grade = []
         i=0
         if grade_cutoff is None:
+            logger.error('GradeUCursos - grade_cutoff is not defined')
             return None
         try:
             enrolled_students = User.objects.filter(
@@ -147,31 +221,6 @@ class GradeUcursosView(View):
             report_grade.append([user_rut, obs, grade])
             i += 1
         return report_grade
-
-    def generate_report(self, report_grade):
-        """
-            Generate Excel File
-        """
-        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response['Content-Disposition'] = "attachment; filename=notas_estudiantes.xlsx"
-
-        workbook = xlsxwriter.Workbook(response, {'in_memory': True})
-        worksheet = workbook.add_worksheet()
-        # Add a bold format to use to highlight cells.
-        bold = workbook.add_format({'bold': True})
-        # Write some data headers.
-        worksheet.write('A1', 'RUT', bold)
-        worksheet.write('B1', 'Observaciones', bold)
-        worksheet.write('C1', 'Nota', bold)
-        row = 1
-        for data in report_grade:
-            worksheet.write(row, 0, data[0])
-            worksheet.write(row, 1, data[1])
-            worksheet.write(row, 2, data[2])
-            row += 1
-        workbook.close()
-
-        return response
 
     def get_user_scale(self, user, course_key, scale, grade_cutoff):
         """
@@ -223,3 +272,72 @@ class GradeUcursosView(View):
         if grade_percent < grade_cutoff:
             return round(10. * (3. / grade_cutoff * grade_percent + 1.)) / 10.
         return round((3. / (1. - grade_cutoff) * grade_percent + (7. - (3. / (1. - grade_cutoff)))) * 10.) / 10.
+
+class GradeUcursosExportView(View, Content):
+    """
+        Export all student grade in .xlsx format
+    """
+
+    def get(self, request):
+        if not request.user.is_anonymous:
+            context = {
+                'data_url': reverse('gradeucursos-export:data')
+            }
+            return render(request, 'gradeucursos/data.html', context)
+        else:
+            logger.error("GradeUCursos - User is Anonymous")
+        raise Http404()
+
+    def post(self, request):
+        if not request.user.is_anonymous:
+            context = {
+                'curso': request.POST.get('curso', ""),
+                'grade_type': request.POST.get("grade_type", ""),
+                'data_url': reverse('gradeucursos-export:data')
+            }
+            data_error = self.validate_data(request.user, context)
+            context.update(data_error)
+            print(context)
+            if len(data_error) == 0:
+                data_report = cache.get("eol_grade_ucursos-{}-{}-data".format(context['curso'], context['grade_type']))
+                if data_report is None:
+                    logger.error("GradeUCursos - The data has not been generated yet, user: {}, data: {}".format(request.user, data))
+                    context['report_error'] = True
+                    return render(request, 'gradeucursos/data.html', context)
+                else:
+                    if data_report['state'] == 'success':
+                        return self.generate_report(data_report['report_grade'])
+                    else:
+                        logger.error("GradeUCursos - Error to generate report or grade_cutoff is no defined, user: {}, data: {}".format(request.user, data))
+                        context['report_error'] = True
+                        return render(request, 'gradeucursos/data.html', context)
+            else:
+                return render(request, 'gradeucursos/data.html', context)
+        else:
+            logger.error("GradeUCursos - User is Anonymous")
+        raise Http404()
+    
+    def generate_report(self, report_grade):
+        """
+            Generate Excel File
+        """
+        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response['Content-Disposition'] = "attachment; filename=notas_estudiantes.xlsx"
+
+        workbook = xlsxwriter.Workbook(response, {'in_memory': True})
+        worksheet = workbook.add_worksheet()
+        # Add a bold format to use to highlight cells.
+        bold = workbook.add_format({'bold': True})
+        # Write some data headers.
+        worksheet.write('A1', 'RUT', bold)
+        worksheet.write('B1', 'Observaciones', bold)
+        worksheet.write('C1', 'Nota', bold)
+        row = 1
+        for data in report_grade:
+            worksheet.write(row, 0, data[0])
+            worksheet.write(row, 1, data[1])
+            worksheet.write(row, 2, data[2])
+            row += 1
+        workbook.close()
+
+        return response
