@@ -34,7 +34,6 @@ from time import time
 from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
 from django.db import IntegrityError, transaction
 from django.utils.translation import ugettext_noop
-from pytz import UTC
 from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
 logger = logging.getLogger(__name__)
 
@@ -306,7 +305,7 @@ class GradeUcursosExportView(View, Content):
                     return render(request, 'gradeucursos/data.html', context)
                 else:
                     if data_report['state'] == 'success':
-                        return self.generate_report(data_report['report_grade'])
+                        return self.generate_report(data_report['report_grade'], context['curso'])
                     else:
                         logger.error("GradeUCursos - Error to generate report or grade_cutoff is no defined, user: {}, data: {}".format(request.user, data))
                         context['report_error'] = True
@@ -317,12 +316,12 @@ class GradeUcursosExportView(View, Content):
             logger.error("GradeUCursos - User is Anonymous")
         raise Http404()
     
-    def generate_report(self, report_grade):
+    def generate_report(self, report_grade, course_id):
         """
             Generate Excel File
         """
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response['Content-Disposition'] = "attachment; filename=notas_estudiantes.xlsx"
+        response['Content-Disposition'] = "attachment; filename=notas_estudiantes_{}.xlsx".format(course_id)
 
         workbook = xlsxwriter.Workbook(response, {'in_memory': True})
         worksheet = workbook.add_worksheet()
@@ -330,7 +329,9 @@ class GradeUcursosExportView(View, Content):
         bold = workbook.add_format({'bold': True})
         # Write some data headers.
         worksheet.write('A1', 'RUT', bold)
+        worksheet.set_column('A:A', 11)  # Column A width set to 11.
         worksheet.write('B1', 'Observaciones', bold)
+        worksheet.set_column('B:B', 15)  # Column B width set to 15.
         worksheet.write('C1', 'Nota', bold)
         row = 1
         for data in report_grade:

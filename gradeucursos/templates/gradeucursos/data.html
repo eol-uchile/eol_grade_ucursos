@@ -25,6 +25,8 @@ p {
 function export_grade(e){
     cleanGradeUcursos()
     e.disabled = true;
+    document.getElementById('gradeucursos_curso').disabled = true;
+    document.getElementById('gradeucursos_grade_type').disabled = true;
     var loading = document.getElementById('ui-loading-gradeucursos-load');
     loading.style.display = "block";
     var data = {
@@ -56,13 +58,18 @@ function GradeUcursosData(report_data){
             aux_error.style.display = "block";
             var loading = document.getElementById('ui-loading-gradeucursos-load');
             loading.style.display = "none";
+            document.getElementById('gradeucursos_curso').disabled = false;
+            document.getElementById('gradeucursos_grade_type').disabled = false;
         }
     })
 }
 function GradeUcursosDataSuccess(){
+    document.getElementById('gradeucursos_curso').disabled = false;
+    document.getElementById('gradeucursos_grade_type').disabled = false;
     document.getElementById('gradeucursos_button').click();
     var loading = document.getElementById('ui-loading-gradeucursos-load');
     loading.style.display = "none";
+    
 }
 function GradeUcursosDataError(data){
     if (data['empty_course']){
@@ -88,6 +95,8 @@ function GradeUcursosDataError(data){
     var loading = document.getElementById('ui-loading-gradeucursos-load');
     loading.style.display = "none";
     document.getElementById('gradeucursos_data_button').disabled = false
+    document.getElementById('gradeucursos_curso').disabled = false;
+    document.getElementById('gradeucursos_grade_type').disabled = false;
 }
 function cleanGradeUcursos(){
     document.getElementById('ui-loading-gradeucursos-load').style.display = "none";
@@ -144,7 +153,7 @@ function cleanGradeUcursos(){
             <select class="inputwidth1" style="font-style: normal; font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;" name='grade_type' id='gradeucursos_grade_type'>
                 <option value="seven_scale">1.0 - 7.0</option>
                 <option value="hundred_scale">0 - 100</option>
-                <option value="percent_scale">0.0 - 1.0</option>
+                <option value="percent_scale">0.00 - 1.00</option>
             </select>
         </div>
         <div id="ui-loading-gradeucursos-load" class="ui-loading is-hidden" style="box-shadow: none;">
