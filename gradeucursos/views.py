@@ -10,31 +10,37 @@ from django.http import Http404, HttpResponse, JsonResponse
 from collections import OrderedDict, defaultdict
 from django.core.exceptions import FieldError
 from django.contrib.auth.models import User
+from functools import partial
+from datetime import datetime
+from io import BytesIO
+from time import time
+from pytz import UTC
 import requests
 import json
 import six
 import hashlib
 import os
 import io
+
 import logging
+import xlsxwriter
 from django.urls import reverse
 from opaque_keys import InvalidKeyError
 from courseware.courses import get_course_by_id, get_course_with_access
+from common.djangoapps.util.file import course_filename_prefix_generator
 from courseware.access import has_access
-import unicodecsv as csv
 from django.core.exceptions import FieldError
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
-import xlsxwriter
 from django.core.cache import cache
 from celery import current_task, task
 from lms.djangoapps.instructor_task.tasks_base import BaseInstructorTask
 from lms.djangoapps.instructor_task.api_helper import submit_task
-from functools import partial
-from time import time
 from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
 from django.db import IntegrityError, transaction
 from django.utils.translation import ugettext_noop
 from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
+from lms.djangoapps.instructor_task.models import ReportStore
+from django.core.files.base import ContentFile
 logger = logging.getLogger(__name__)
 
 GRADE_TYPE_LIST = ['seven_scale', 'hundred_scale', 'percent_scale']
@@ -55,7 +61,7 @@ def task_get_data(
         action_name):
     course_key = course_id
     grade_type = task_input["grade_type"]
-
+    instructor_tab = task_input['instructor_tab']
     start_time = time()
     task_progress = TaskProgress(
         action_name,
@@ -63,23 +69,26 @@ def task_get_data(
         start_time)
 
     report_grade = GradeUcursosView().get_grade_report(task_input['course_id'], task_input['grade_type'])
-    data = {'report_grade': report_grade, 'state': ''}
-    if report_grade is None:
-        data['state'] = 'error'
-        cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 60) #1 minute
-        current_step = {'step': 'Error to uploading Data Eol Grade UCursos'}
-    else:
-        data['state'] = 'success'
-        cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 300) #5 minute
+    if instructor_tab:
+        GradeUcursosView().generate_report_instructor_tab(report_grade, course_key)
         current_step = {'step': 'Uploading Data Eol Grade UCursos'}
+    else:
+        data = {'report_grade': report_grade, 'state': ''}
+        if report_grade is None:
+            data['state'] = 'error'
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 60) #1 minute
+            current_step = {'step': 'Error to uploading Data Eol Grade UCursos'}
+        else:
+            data['state'] = 'success'
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 300) #5 minute
+            current_step = {'step': 'Uploading Data Eol Grade UCursos'}
     return task_progress.update_task_state(extra_meta=current_step)
 
-
-def task_process_data(request, course_id, grade_type):
+def task_process_data(request, course_id, grade_type, instructor_tab=False):
     course_key = CourseKey.from_string(course_id)
     task_type = 'EOL_GRADE_UCURSOS'
     task_class = process_data
-    task_input = {'course_id': course_id, 'grade_type': grade_type}
+    task_input = {'course_id': course_id, 'grade_type': grade_type, 'instructor_tab':instructor_tab}
     task_key = "{}_{}".format(course_id, grade_type)
 
     return submit_task(
@@ -104,15 +113,27 @@ class Content(object):
                 logger.error("GradeUCursos - Course dont exists, user: {}, course_id: {}".format(user.id, data['curso']))
                 error['error_curso'] = True
 
-            elif not self.user_have_permission(user, data['curso']):
-                logger.error("GradeUCursos - user dont have permission in the course, course: {}, user: {}".format(data['curso'], user))
-                error['user_permission'] = True
-
+            else:
+                # valida permisos de usuario
+                if not self.user_have_permission(user, data['curso']):
+                    logger.error("GradeUCursos - user dont have permission in the course, course: {}, user: {}".format(data['curso'], user))
+                    error['user_permission'] = True
+                course_key = CourseKey.from_string(data['curso'])
+                grade_cutoff = self.get_grade_cutoff(course_key)
+                # valida grade_cutoff del curso
+                if grade_cutoff is None:
+                    logger.error("GradeUCursos - grade_cutoff is not defined, course: {}, user: {}".format(data['curso'], user))
+                    error['error_grade_cutoff'] = True
         # si el grade_type es incorrecto
         if not data['grade_type'] in GRADE_TYPE_LIST:
             error['error_grade_type'] = True
             logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, data['grade_type']))
 
+        try:
+            from uchileedxlogin.models import EdxLoginUser
+        except ImportError:
+            logger.error("GradeUCursos - UchileEdxLogin not installed, course: {}, user: {}".format(data['curso'], user))
+            error['error_model'] = True
         return error
     
     def validate_course(self, id_curso):
@@ -144,6 +165,24 @@ class Content(object):
             logger.error('GradeUCursos - Error in is_instructor_or_staff({}, {}), Exception {}'.format(user, str(course_key), str(e)))
             return False
 
+    def get_grade_cutoff(self, course_key):
+        """
+            Get course grade_cutoffs
+        """
+        # Load the course and user objects
+        try:
+            course = get_course_by_id(course_key)
+            grade_cutoff = min(course.grade_cutoffs.values())  # Get the min value
+            return grade_cutoff
+        # For any course or user exceptions, kick the user back to the "Invalid" screen
+        except (InvalidKeyError, Http404) as exception:
+            error_str = (
+                u"Invalid cert: error finding course %s "
+                u"Specific error: %s"
+            )
+            logger.error(error_str, str(course_key), str(exception))
+            return None
+
 class GradeUcursosView(View, Content):
     """
         Generate and save in cache a list of all student grade
@@ -157,11 +196,15 @@ class GradeUcursosView(View, Content):
         if not request.user.is_anonymous:
             data = {
                 'curso': request.POST.get('curso', ""),
-                'grade_type': request.POST.get("grade_type", "")
+                'grade_type': request.POST.get("grade_type", ""),
+                'instructor_tab': request.POST.get('instructor_tab', False)
             }
             data_error = self.validate_data(request.user, data)
             if len(data_error) == 0:
-                return self.get_data_report(request, data['curso'], data['grade_type'])
+                if data['instructor_tab']:
+                    return self.get_data_report_instructor_tab(request, data['curso'], data['grade_type'])
+                else:
+                    return self.get_data_report(request, data['curso'], data['grade_type'])
             else:
                 data_error['status'] = 'Error'
                 return JsonResponse(data_error)
@@ -173,7 +216,8 @@ class GradeUcursosView(View, Content):
         """
             get data from cache or task
         """
-        if cache.get("eol_grade_ucursos-{}-{}-data".format(course_id, grade_type)) is None:
+        report = cache.get("eol_grade_ucursos-{}-{}-data".format(course_id, grade_type))
+        if report is None:
             try:
                 task = task_process_data(request, course_id, grade_type)
                 success_status = 'Generating'
@@ -181,7 +225,21 @@ class GradeUcursosView(View, Content):
             except AlreadyRunningError:
                 logger.error("GradeUCursos - Task Already Running Error, user: {}, course_id: {}".format(request.user, course_id))
                 return JsonResponse({'status': 'AlreadyRunningError'})
+        elif report['state'] == 'error':
+            return JsonResponse({'report_error': True, 'status': 'Error'})
         return JsonResponse({'status': 'Generated'})
+
+    def get_data_report_instructor_tab(self, request, course_id, grade_type):
+        """
+            generate report with task_process for instructor tab
+        """
+        try:
+            task = task_process_data(request, course_id, grade_type, instructor_tab=True)
+            success_status = 'Generating'
+            return JsonResponse({"status": success_status, "task_id": task.task_id})
+        except AlreadyRunningError:
+            logger.error("GradeUCursos - Task Already Running Error, user: {}, course_id: {}".format(request.user, course_id))
+            return JsonResponse({'status': 'AlreadyRunningError'})
 
     def get_grade_report(self, course_id, scale):
         """
@@ -221,6 +279,44 @@ class GradeUcursosView(View, Content):
             i += 1
         return report_grade
 
+    def generate_report_instructor_tab(self, report_grade, course_key):
+        """
+            Generate Excel File
+        """
+        report_store = ReportStore.from_config('GRADES_DOWNLOAD')
+        output = BytesIO()
+        workbook = xlsxwriter.Workbook(output)
+        
+        worksheet = workbook.add_worksheet()
+        # Add a bold format to use to highlight cells.
+        bold = workbook.add_format({'bold': True})
+        # Write some data headers.
+        worksheet.write('A1', 'RUT', bold)
+        worksheet.set_column('A:A', 11)  # Column A width set to 11.
+        worksheet.write('B1', 'Observaciones', bold)
+        worksheet.set_column('B:B', 15)  # Column B width set to 15.
+        worksheet.write('C1', 'Nota', bold)
+        row = 1
+        for data in report_grade:
+            worksheet.write(row, 0, data[0])
+            worksheet.write(row, 1, data[1])
+            worksheet.write(row, 2, data[2])
+            row += 1
+
+        workbook.close()
+        start_date = datetime.now(UTC)
+        xlsx_name = 'notas_estudiantes'
+        report_name = u"{course_prefix}_{xlsx_name}_{timestamp_str}.xlsx".format(
+            course_prefix=course_filename_prefix_generator(course_key),
+            xlsx_name=xlsx_name,
+            timestamp_str=start_date.strftime("%Y-%m-%d-%H%M")
+        )
+        # Get the output bytes for creating a django file
+        output = output.getvalue()
+        # Generate the data file
+        data_file = ContentFile(output)
+        report_store.store(course_key, report_name, data_file)
+
     def get_user_scale(self, user, course_key, scale, grade_cutoff):
         """
             Convert the percentage rating based on the scale
@@ -243,24 +339,6 @@ class GradeUcursosView(View, Content):
         if response is not None:
             return response.percent
         return ''
-
-    def get_grade_cutoff(self, course_key):
-        """
-            Get course grade_cutoffs
-        """
-        # Load the course and user objects
-        try:
-            course = get_course_by_id(course_key)
-            grade_cutoff = min(course.grade_cutoffs.values())  # Get the min value
-            return grade_cutoff
-        # For any course or user exceptions, kick the user back to the "Invalid" screen
-        except (InvalidKeyError, Http404) as exception:
-            error_str = (
-                u"Invalid cert: error finding course %s "
-                u"Specific error: %s"
-            )
-            logger.error(error_str, str(course_key), str(exception))
-            return None
 
     def grade_percent_scaled(self, grade_percent, grade_cutoff):
         """
@@ -296,18 +374,17 @@ class GradeUcursosExportView(View, Content):
             }
             data_error = self.validate_data(request.user, context)
             context.update(data_error)
-            print(context)
             if len(data_error) == 0:
                 data_report = cache.get("eol_grade_ucursos-{}-{}-data".format(context['curso'], context['grade_type']))
                 if data_report is None:
-                    logger.error("GradeUCursos - The data has not been generated yet, user: {}, data: {}".format(request.user, data))
+                    logger.error("GradeUCursos - The data has not been generated yet, user: {}, data: {}".format(request.user, context))
                     context['report_error'] = True
                     return render(request, 'gradeucursos/data.html', context)
                 else:
                     if data_report['state'] == 'success':
                         return self.generate_report(data_report['report_grade'], context['curso'])
                     else:
-                        logger.error("GradeUCursos - Error to generate report or grade_cutoff is no defined, user: {}, data: {}".format(request.user, data))
+                        logger.error("GradeUCursos - Error to generate report or grade_cutoff is not defined, user: {}, data: {}".format(request.user, context))
                         context['report_error'] = True
                         return render(request, 'gradeucursos/data.html', context)
             else:
