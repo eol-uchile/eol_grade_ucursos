@@ -41,6 +41,7 @@ from django.utils.translation import ugettext_noop
 from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
 from lms.djangoapps.instructor_task.models import ReportStore
 from django.core.files.base import ContentFile
+from lms.djangoapps.instructor import permissions
 logger = logging.getLogger(__name__)
 
 GRADE_TYPE_LIST = ['seven_scale', 'hundred_scale', 'percent_scale']
@@ -156,11 +157,12 @@ class Content(object):
 
     def is_instructor_or_staff(self, user, course_key):
         """
-            Verify if the user is instructor or staff course
+            Verify if the user is instructor or staff course or data researcher
         """
         try:
             course = get_course_with_access(user, "load", course_key)
-            return bool(has_access(user, 'instructor', course)) or bool(has_access(user, 'staff', course))
+            data_researcher_access = user.has_perm(permissions.CAN_RESEARCH, course_key)
+            return bool(has_access(user, 'instructor', course)) or bool(has_access(user, 'staff', course)) or data_researcher_access
         except Exception as e:
             logger.error('GradeUCursos - Error in is_instructor_or_staff({}, {}), Exception {}'.format(user, str(course_key), str(e)))
             return False

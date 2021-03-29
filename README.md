@@ -22,21 +22,28 @@ To enable export grade button in your theme add next file and/or lines code:
 
     **and add html button**
 
-          %if 'has_gradeucursos' in section_data and section_data['has_gradeucursos']:
+        %if 'has_gradeucursos' in section_data and section_data['has_gradeucursos']:
             <div class='gradeucursos-export'>
                 <hr>
                 <h4 class="hd hd-4">Exportar Notas</h4>
-                <p>Seleccione la escala de nota ha exportar, presione el boton Exportar Notas y se generara un archivo Excel</p>
-                <p>
+                %if section_data['gradeucursos_grade_cutoff'] is None:
+                <div class="gradeucursos-error-msg" style="display: block;">
+                    <p>El porcentaje de aprobación no se configurado correctamente, contáctese con la mesa de ayuda(eol-ayuda@uchile.cl) para mas información.</p>
+                </div>
+                %else:
+                    <p>El porcentaje de aprobación del curso es del: ${section_data['gradeucursos_grade_cutoff']*100} %.</p>
+                    <p>Seleccione la escala de nota, presione el boton Exportar Notas y se generará un archivo Excel.</p>
+                    <p>
                     <label for="gradeucursos_grade_type" style="clear: both; font-style: normal; font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif">Escala de Nota:</label>
                     <select class="gradeucursos_select" name='gradeucursos_grade_type' id='gradeucursos_grade_type'>
                         <option value="seven_scale">1.0 - 7.0</option>
                         <option value="hundred_scale">0 - 100</option>
                         <option value="percent_scale">0.00 - 1.00</option>
                     </select>
-                </p>
-                <input hidden disabled type="text" name='curso' id="gradeucursos_curso" value="${section_data['gradeucursos_course']}"></input>
-                <p><input id='gradeucursos_data_button' onclick="generate_data_gradeucursos(this)" type="button" name="gradeucursos-data" value="Exportar Notas" data-endpoint="${ section_data['gradeucursos_url_data'] }"/>
+                    </p>
+                    <input hidden disabled type="text" name='curso' id="gradeucursos_curso" value="${section_data['gradeucursos_course']}"></input>
+                    <p><input id='gradeucursos_data_button' onclick="generate_data_gradeucursos(this)" type="button" name="gradeucursos-data" value="Exportar Notas" data-endpoint="${ section_data['gradeucursos_url_data'] }"/>
+                %endif
                 <div class="gradeucursos-success-msg" id="gradeucursos-success-msg"></div>
                 <div class="gradeucursos-warning-msg" id="gradeucursos-warning-msg"></div>
                 <div class="gradeucursos-error-msg" id="gradeucursos-error-msg"></div>
@@ -51,6 +58,7 @@ To enable export grade button in your theme add next file and/or lines code:
             section_data['has_gradeucursos'] = True
             section_data['gradeucursos_url_data'] = reverse('gradeucursos-export:data')
             section_data['gradeucursos_course'] = six.text_type(course_key)
+            section_data['gradeucursos_grade_cutoff'] = views.Content().get_grade_cutoff(course_key)
         except ImportError:
             section_data['has_gradeucursos'] = False
         

@@ -17,6 +17,7 @@ from .views import GradeUcursosView, GradeUcursosExportView, task_get_data
 from lms.djangoapps.grades.tests.utils import mock_get_score
 from lms.djangoapps.grades.tests.base import GradeTestBase
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
+from common.djangoapps.student.tests.factories import CourseAccessRoleFactory
 from lms.djangoapps.instructor_task.models import ReportStore
 import json
 
@@ -53,6 +54,22 @@ class TestGradeUcursosView(GradeTestBase):
                 user=self.student_2, course_id=self.course.id, mode='honor')
             self.client_student.login(
                 username='student', password='test')
+            # Create and Enroll data researcher user
+            self.data_researcher_user = UserFactory(
+                username='data_researcher_user',
+                password='test',
+                email='data.researcher@edx.org')
+            CourseEnrollmentFactory(
+                user=self.data_researcher_user,
+                course_id=self.course.id, mode='audit')
+            CourseAccessRoleFactory(
+                course_id=self.course.id,
+                user=self.data_researcher_user,
+                role='data_researcher',
+                org=self.course.id.org
+            )
+            self.client_data_researcher = Client()
+            self.assertTrue(self.client_data_researcher.login(username='data_researcher_user', password='test'))
     
     def test_get_user_grade(self):
         """
@@ -94,6 +111,38 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(r['status'] , 'Generating')
         response2 = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
+        r2 = json.loads(response2._container[0].decode())
+        self.assertEqual(response2.status_code, 200)
+        self.assertEqual(r2['status'] , 'Generated')
+        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
+        self.assertTrue(report_grade is not None)
+        self.assertEqual(len(report_grade), 2)
+        self.assertEqual(report_grade[0], ['9472337-K', '', 4.0])
+        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        self.assertEqual(report_grade[1], ['', obs, 4.0])
+
+    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
+    def test_gradeucursos_post_data_researcher(self, grade):
+        """
+            Test gradeucursos post normal process with data researcher role
+        """
+        grade.return_value = 0.5
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id)
+        }
+        #grade cutoff 50%
+        response = self.client_data_researcher.post(reverse('gradeucursos-export:data'), post_data)
+        r = json.loads(response._container[0].decode())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(r['status'] , 'Generating')
+        response2 = self.client_data_researcher.post(reverse('gradeucursos-export:data'), post_data)
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
