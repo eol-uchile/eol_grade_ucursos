@@ -6,6 +6,7 @@ function generate_data_gradeucursos(input){
     var report_data = {
         'curso': document.getElementById('gradeucursos_curso').value,
         'grade_type': document.getElementById('gradeucursos_grade_type').value,
+        'assig_type': document.getElementById('gradeucursos_assig_type').value,
         'instructor_tab': true
     }
     var post_url = document.getElementById('gradeucursos_data_button').dataset.endpoint;

@@ -78,7 +78,7 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 4):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
         with mock_get_score(1, 4):
-            percent = GradeUcursosView().get_user_grade(self.student, self.course.id)            
+            percent = GradeUcursosView().get_user_grade(self.student, self.course.id, 'gradeucursos_total')
             self.assertEqual(percent, 0.25)
     
     def test_gradeucursos_get(self):
@@ -114,7 +114,7 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
+        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', '', 4.0])
@@ -146,19 +146,17 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
+        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', '', 4.0])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', obs, 4.0])
 
-    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
-    def test_gradeucursos_post_from_instructor_tab(self, grade):
+    def test_gradeucursos_post_from_instructor_tab(self):
         """
             Test gradeucursos post from instructor tab normal process
         """
-        grade.return_value = 0.5
         try:
             from unittest.case import SkipTest
             from uchileedxlogin.models import EdxLoginUser
@@ -168,7 +166,8 @@ class TestGradeUcursosView(GradeTestBase):
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
-            'instructor_tab': True
+            'instructor_tab': True,
+            'assig_type': 'gradeucursos_total'
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = task_get_data(
@@ -180,6 +179,79 @@ class TestGradeUcursosView(GradeTestBase):
         report_path = report_store.path_to(self.course.id, report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_path)
+
+    def test_gradeucursos_post_from_instructor_tab_assig_type(self):
+        """
+            Test gradeucursos post from instructor tab normal process with assignament
+        """
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        task_input = {
+            'grade_type': 'seven_scale',
+            'course_id': str(self.course.id),
+            'instructor_tab': True,
+            'assig_type': 'Homework'
+        }
+        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
+            result = task_get_data(
+                None, None, self.course.id,
+                task_input, 'EOL_GRADE_UCURSOS'
+            )
+        report_store = ReportStore.from_config(config_name='GRADES_DOWNLOAD')
+        report_csv_filename = report_store.links_for(self.course.id)[0][0]
+        report_path = report_store.path_to(self.course.id, report_csv_filename)
+        self.assertTrue('_notas_estudiantes_' in report_csv_filename)
+        self.assertTrue('_notas_estudiantes_' in report_path)
+
+    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self):
+        """
+            Test gradeucursos post from instructor tab normal process with assignament
+        """
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id),
+            'instructor_tab': True,
+            'assig_type': 'Homework'
+        }
+        #grade cutoff 50%
+        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
+        self.assertTrue(report_grade is not None)
+        self.assertEqual(len(report_grade), 2)
+        self.assertEqual(report_grade[0], ['9472337-K', '', 1.0])
+        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        self.assertEqual(report_grade[1], ['', obs, 1.0])
+
+    def test_gradeucursos_post_from_instructor_tab_wrong_assig_type(self):
+        """
+            Test gradeucursos post from instructor tab wrong assignament type
+        """
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id),
+            'instructor_tab': True,
+            'assig_type': 'asdasdsads'
+        }
+        response = self.client_data_researcher.post(reverse('gradeucursos-export:data'), post_data)
+        r = json.loads(response._container[0].decode())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(r['status'] , 'Error')
+        self.assertTrue(r['error_assig_type'])
 
     def test_gradeucursos_post_not_logged(self):
         """
@@ -284,9 +356,8 @@ class TestGradeUcursosView(GradeTestBase):
         }
         try:
             from uchileedxlogin.models import EdxLoginUser
-            self.skipTest("import error uchileedxlogin")
+            self.skipTest("this test check if validate_data function verify EdxLoginUser model")
         except ImportError:
-            self.skipTest("import error uchileedxlogin")
             response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
             self.assertEqual(response.status_code, 200)
             r = json.loads(response._container[0].decode())
@@ -368,12 +439,10 @@ class TestGradeUcursosExportView(GradeTestBase):
         response = self.client_anonymous.post(reverse('gradeucursos-export:export'))
         self.assertEqual(response.status_code, 404)
     
-    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
-    def test_gradeucursosexport_post(self, grade):
+    def test_gradeucursosexport_post(self):
         """
             Test gradeucursosexport post normal process
         """
-        grade.return_value = 0.5
         try:
             from unittest.case import SkipTest
             from uchileedxlogin.models import EdxLoginUser
@@ -482,9 +551,8 @@ class TestGradeUcursosExportView(GradeTestBase):
         }
         try:
             from uchileedxlogin.models import EdxLoginUser
-            self.skipTest("import error uchileedxlogin")
+            self.skipTest("this test check if validate_data function verify EdxLoginUser model")
         except ImportError:
-            self.skipTest("import error uchileedxlogin")
             response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
             self.assertEqual(response.status_code, 200)
             self.assertTrue('id="error_model"' in response._container[0].decode())

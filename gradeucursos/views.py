@@ -24,6 +24,8 @@ import io
 
 import logging
 import xlsxwriter
+from numpy import around
+from six import itervalues
 from django.urls import reverse
 from opaque_keys import InvalidKeyError
 from courseware.courses import get_course_by_id, get_course_with_access
@@ -62,6 +64,7 @@ def task_get_data(
         action_name):
     course_key = course_id
     grade_type = task_input["grade_type"]
+    assig_type = task_input["assig_type"]
     instructor_tab = task_input['instructor_tab']
     start_time = time()
     task_progress = TaskProgress(
@@ -69,7 +72,7 @@ def task_get_data(
         1,
         start_time)
 
-    report_grade = GradeUcursosView().get_grade_report(task_input['course_id'], task_input['grade_type'])
+    report_grade = GradeUcursosView().get_grade_report(task_input['course_id'], grade_type, assig_type)
     if instructor_tab:
         GradeUcursosView().generate_report_instructor_tab(report_grade, course_key)
         current_step = {'step': 'Uploading Data Eol Grade UCursos'}
@@ -77,20 +80,20 @@ def task_get_data(
         data = {'report_grade': report_grade, 'state': ''}
         if report_grade is None:
             data['state'] = 'error'
-            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 60) #1 minute
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 60) #1 minute
             current_step = {'step': 'Error to uploading Data Eol Grade UCursos'}
         else:
             data['state'] = 'success'
-            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], task_input["grade_type"]), data, 300) #5 minute
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 300) #5 minute
             current_step = {'step': 'Uploading Data Eol Grade UCursos'}
     return task_progress.update_task_state(extra_meta=current_step)
 
-def task_process_data(request, course_id, grade_type, instructor_tab=False):
+def task_process_data(request, course_id, grade_type, assig_type='gradeucursos_total', instructor_tab=False):
     course_key = CourseKey.from_string(course_id)
     task_type = 'EOL_GRADE_UCURSOS'
     task_class = process_data
-    task_input = {'course_id': course_id, 'grade_type': grade_type, 'instructor_tab':instructor_tab}
-    task_key = "{}_{}".format(course_id, grade_type)
+    task_input = {'course_id': course_id, 'grade_type': grade_type, 'assig_type': assig_type, 'instructor_tab':instructor_tab}
+    task_key = "{}_{}_{}".format(course_id, grade_type, assig_type)
 
     return submit_task(
         request,
@@ -125,6 +128,12 @@ class Content(object):
                 if grade_cutoff is None:
                     logger.error("GradeUCursos - grade_cutoff is not defined, course: {}, user: {}".format(data['curso'], user))
                     error['error_grade_cutoff'] = True
+                # si el assig_type es incorrecto
+                if data['instructor_tab']:
+                    assignament_types = self._get_assignment_types(course_key)
+                    if data['assig_type'] not in assignament_types and data['assig_type'] != 'gradeucursos_total':
+                        logger.error("GradeUCursos - Wrong assignament_types, course: {}, user: {}, assig_type: {}, assignament_types".format(data['curso'], user, data['assig_type'], assignament_types))
+                        error['error_assig_type'] = True
         # si el grade_type es incorrecto
         if not data['grade_type'] in GRADE_TYPE_LIST:
             error['error_grade_type'] = True
@@ -185,6 +194,23 @@ class Content(object):
             logger.error(error_str, str(course_key), str(exception))
             return None
 
+    def _get_assignment_types(self, course_key):
+        """
+        Helper function that returns a serialized dict of assignment types
+        for the given course.
+        """
+        course = get_course_by_id(course_key)
+        serialized_grading_policies = {}
+        for grader, assignment_type, weight in course.grader.subgraders:
+            serialized_grading_policies[assignment_type] = {
+                'type': assignment_type,
+                'short_label': grader.short_label,
+                'min_count': grader.min_count,
+                'drop_count': grader.drop_count,
+                'weight': weight,
+            }
+        return serialized_grading_policies
+
 class GradeUcursosView(View, Content):
     """
         Generate and save in cache a list of all student grade
@@ -199,12 +225,13 @@ class GradeUcursosView(View, Content):
             data = {
                 'curso': request.POST.get('curso', ""),
                 'grade_type': request.POST.get("grade_type", ""),
+                'assig_type': request.POST.get("assig_type", ""),
                 'instructor_tab': request.POST.get('instructor_tab', False)
             }
             data_error = self.validate_data(request.user, data)
             if len(data_error) == 0:
                 if data['instructor_tab']:
-                    return self.get_data_report_instructor_tab(request, data['curso'], data['grade_type'])
+                    return self.get_data_report_instructor_tab(request, data['curso'], data['grade_type'], data['assig_type'])
                 else:
                     return self.get_data_report(request, data['curso'], data['grade_type'])
             else:
@@ -231,19 +258,19 @@ class GradeUcursosView(View, Content):
             return JsonResponse({'report_error': True, 'status': 'Error'})
         return JsonResponse({'status': 'Generated'})
 
-    def get_data_report_instructor_tab(self, request, course_id, grade_type):
+    def get_data_report_instructor_tab(self, request, course_id, grade_type, assig_type):
         """
             generate report with task_process for instructor tab
         """
         try:
-            task = task_process_data(request, course_id, grade_type, instructor_tab=True)
+            task = task_process_data(request, course_id, grade_type, assig_type=assig_type, instructor_tab=True)
             success_status = 'Generating'
             return JsonResponse({"status": success_status, "task_id": task.task_id})
         except AlreadyRunningError:
             logger.error("GradeUCursos - Task Already Running Error, user: {}, course_id: {}".format(request.user, course_id))
             return JsonResponse({'status': 'AlreadyRunningError'})
 
-    def get_grade_report(self, course_id, scale):
+    def get_grade_report(self, course_id, scale, assig_type):
         """
             Generate list of all student grade 
             report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
@@ -264,7 +291,7 @@ class GradeUcursosView(View, Content):
             logger.error('GradeUCursos - UchileEdxLogin not installed')
             return None
         for user in enrolled_students:
-            grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, grade_cutoff)
+            grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff)
             user_rut = ''
             obs = ''
             if user['edxloginuser__run'] is not None:
@@ -319,27 +346,35 @@ class GradeUcursosView(View, Content):
         data_file = ContentFile(output)
         report_store.store(course_key, report_name, data_file)
 
-    def get_user_scale(self, user, course_key, scale, grade_cutoff):
+    def get_user_scale(self, user, course_key, scale, assig_type, grade_cutoff):
         """
             Convert the percentage rating based on the scale
         """
-        percent = self.get_user_grade(user, course_key)
+        percent = self.get_user_grade(user, course_key, assig_type)
         if percent != '':
             if scale == 'seven_scale':
                 return self.grade_percent_scaled(percent, grade_cutoff)
             elif scale == 'hundred_scale':
-                return percent * 100
+                return round(percent * 100)
             elif scale == 'percent_scale':
-                return percent
+                return round(percent, 2)
         return ''
 
-    def get_user_grade(self, user, course_key):
+    def get_user_grade(self, user, course_key, assig_type):
         """
             Get user grade
         """
         response = CourseGradeFactory().read(user, course_key=course_key)
         if response is not None:
-            return response.percent
+            if assig_type == 'gradeucursos_total':
+                return response.percent
+            else:
+                avg_grade = ''
+                for assig in response.summary['section_breakdown']:
+                    if assig['category'] == assig_type and 'prominent' in assig and assig['prominent']:
+                        avg_grade = assig['percent']
+                        break
+                return avg_grade
         return ''
 
     def grade_percent_scaled(self, grade_percent, grade_cutoff):
@@ -372,7 +407,8 @@ class GradeUcursosExportView(View, Content):
             context = {
                 'curso': request.POST.get('curso', ""),
                 'grade_type': request.POST.get("grade_type", ""),
-                'data_url': reverse('gradeucursos-export:data')
+                'data_url': reverse('gradeucursos-export:data'),
+                'instructor_tab': False
             }
             data_error = self.validate_data(request.user, context)
             context.update(data_error)
