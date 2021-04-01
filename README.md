@@ -22,7 +22,7 @@ To enable export grade button in your theme add next file and/or lines code:
 
     **and add html button**
 
-        %if 'has_gradeucursos' in section_data and section_data['has_gradeucursos']:
+          %if 'has_gradeucursos' in section_data and section_data['has_gradeucursos']:
             <div class='gradeucursos-export'>
                 <hr>
                 <h4 class="hd hd-4">Exportar Notas</h4>
@@ -32,7 +32,7 @@ To enable export grade button in your theme add next file and/or lines code:
                 </div>
                 %else:
                     <p>El porcentaje de aprobación del curso es del: ${section_data['gradeucursos_grade_cutoff']*100} %.</p>
-                    <p>Seleccione el tipo y la escala de nota, presione el boton Exportar Notas y se generará un archivo Excel.</p>
+                    <p>Seleccione el tipo, escala y el formato de la(s) nota(s), presione el boton Exportar Notas y se generará un archivo Excel.</p>
                     <div class="row"> 
                     <div class="col-md-1" style="padding-left: 0px;margin-top: 15px;">
                         <label for="gradeucursos_assig_type" style="clear: both; font-style: normal; font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif">Tipo de tarea:</label>
@@ -55,7 +55,18 @@ To enable export grade button in your theme add next file and/or lines code:
                         <option value="seven_scale">1.0 - 7.0</option>
                         <option value="hundred_scale">0 - 100</option>
                         <option value="percent_scale">0.00 - 1.00</option>
-                    </select>
+                        </select>
+                    </div>
+                    </div>
+                    <div class="row"> 
+                    <div class="col-md-1" style="padding-left: 0px;margin-top: 15px;">
+                        <label for="gradeucursos_is_resumen" style="clear: both; font-style: normal; font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif">Formato:</label>
+                    </div>
+                    <div class="col-md-3" style="padding-left: 0px;margin-top: 15px;">
+                        <select class="gradeucursos_select" name='gradeucursos_is_resumen' id='gradeucursos_is_resumen'>
+                        <option value="is_resumen">Completo</option>
+                        <option value="gradeucursos_total">Solo Promedio Final</option>
+                        </select>
                     </div>
                     </div>
                     <input hidden disabled type="text" name='curso' id="gradeucursos_curso" value="${section_data['gradeucursos_course']}"></input>

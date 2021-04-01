@@ -3,10 +3,16 @@ function generate_data_gradeucursos(input){
     var success_div = document.getElementById('gradeucursos-success-msg');
     var error_div = document.getElementById('gradeucursos-error-msg');
     var warning_div = document.getElementById('gradeucursos-warning-msg');
+    var is_resumen = false
+    var aux_is_resumen = document.getElementById('gradeucursos_is_resumen').value
+    if(aux_is_resumen == 'is_resumen'){
+      is_resumen = true
+    }
     var report_data = {
         'curso': document.getElementById('gradeucursos_curso').value,
         'grade_type': document.getElementById('gradeucursos_grade_type').value,
         'assig_type': document.getElementById('gradeucursos_assig_type').value,
+        'is_resumen': is_resumen,
         'instructor_tab': true
     }
     var post_url = document.getElementById('gradeucursos_data_button').dataset.endpoint;

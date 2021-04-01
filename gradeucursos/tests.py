@@ -19,6 +19,7 @@ from lms.djangoapps.grades.tests.base import GradeTestBase
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
 from common.djangoapps.student.tests.factories import CourseAccessRoleFactory
 from lms.djangoapps.instructor_task.models import ReportStore
+from collections import OrderedDict, defaultdict
 import json
 
 class TestGradeUcursosView(GradeTestBase):
@@ -78,8 +79,8 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 4):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
         with mock_get_score(1, 4):
-            percent = GradeUcursosView().get_user_grade(self.student, self.course.id, 'gradeucursos_total')
-            self.assertEqual(percent, 0.25)
+            percent = GradeUcursosView().get_user_grade(self.student, self.course.id, 'gradeucursos_total', False)
+            self.assertEqual(percent, {'Prom':0.25})
     
     def test_gradeucursos_get(self):
         """
@@ -89,12 +90,13 @@ class TestGradeUcursosView(GradeTestBase):
         request = response.request
         self.assertEqual(response.status_code, 405)
 
-    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
-    def test_gradeucursos_post(self, grade):
+    def test_gradeucursos_post(self):
         """
             Test gradeucursos post normal process
         """
-        grade.return_value = 0.5
+        with mock_get_score(1, 2):
+            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
+            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
         try:
             from unittest.case import SkipTest
             from uchileedxlogin.models import EdxLoginUser
@@ -103,7 +105,10 @@ class TestGradeUcursosView(GradeTestBase):
             self.skipTest("import error uchileedxlogin")
         post_data = {
             'grade_type': 'seven_scale',
-            'curso': str(self.course.id)
+            'curso': str(self.course.id),
+            'instructor_tab': 'false',
+            'assig_type': 'gradeucursos_total',
+            'is_resumen': 'false'
         }
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
@@ -114,19 +119,20 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', 4.0])
+        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':4.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, 4.0])
+        self.assertEqual(report_grade[1], ['', obs, {'Prom':4.0}])
 
-    @patch('gradeucursos.views.GradeUcursosView.get_user_grade')
-    def test_gradeucursos_post_data_researcher(self, grade):
+    def test_gradeucursos_post_data_researcher(self):
         """
             Test gradeucursos post normal process with data researcher role
         """
-        grade.return_value = 0.5
+        with mock_get_score(1, 2):
+            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
+            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
         try:
             from unittest.case import SkipTest
             from uchileedxlogin.models import EdxLoginUser
@@ -146,12 +152,12 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', 4.0])
+        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':4.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, 4.0])
+        self.assertEqual(report_grade[1], ['', obs, {'Prom':4.0}])
 
     def test_gradeucursos_post_from_instructor_tab(self):
         """
@@ -167,7 +173,8 @@ class TestGradeUcursosView(GradeTestBase):
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
             'instructor_tab': True,
-            'assig_type': 'gradeucursos_total'
+            'assig_type': 'gradeucursos_total',
+            'is_resumen': False
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = task_get_data(
@@ -194,7 +201,8 @@ class TestGradeUcursosView(GradeTestBase):
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
             'instructor_tab': True,
-            'assig_type': 'Homework'
+            'assig_type': 'Homework',
+            'is_resumen': False
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = task_get_data(
@@ -220,16 +228,75 @@ class TestGradeUcursosView(GradeTestBase):
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'Homework'
+            'instructor_tab': 'true',
+            'assig_type': 'Homework',
+            'is_resumen': 'false'
         }
         #grade cutoff 50%
-        report_grade = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total')
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', 1.0])
+        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':1.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, 1.0])
+        self.assertEqual(report_grade[1], ['', obs, {'Prom':1.0}])
+
+    def test_gradeucursos_post_from_instructor_tab_is_resumen(self):
+        """
+            Test gradeucursos post from instructor tab normal process with is_resumen params
+        """
+        with mock_get_score(1, 2):
+            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
+            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        task_input = {
+            'grade_type': 'seven_scale',
+            'course_id': str(self.course.id),
+            'instructor_tab': True,
+            'assig_type': 'Homework',
+            'is_resumen': True
+        }
+        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
+            result = task_get_data(
+                None, None, self.course.id,
+                task_input, 'EOL_GRADE_UCURSOS'
+            )
+        report_store = ReportStore.from_config(config_name='GRADES_DOWNLOAD')
+        report_csv_filename = report_store.links_for(self.course.id)[0][0]
+        report_path = report_store.path_to(self.course.id, report_csv_filename)
+        self.assertTrue('_notas_estudiantes_' in report_csv_filename)
+        self.assertTrue('_notas_estudiantes_' in report_path)
+
+    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self):
+        """
+            Test gradeucursos post from instructor tab normal process with is_resumen params
+        """
+        with mock_get_score(1, 2):
+            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
+            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        post_data = {
+            'grade_type': 'seven_scale',
+            'curso': str(self.course.id)
+        }
+        #grade cutoff 50%
+        report_grade, headers = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', True)
+        self.assertTrue(report_grade is not None)
+        self.assertEqual(len(report_grade), 2)
+        result = OrderedDict([('Homework', 4.0), ('NoCredit', 1.0), ('Prom', 4.0)])
+        self.assertEqual(report_grade[0], ['9472337-K', '', result])
+        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        self.assertEqual(report_grade[1], ['', obs, result])
+
 
     def test_gradeucursos_post_from_instructor_tab_wrong_assig_type(self):
         """
@@ -244,8 +311,9 @@ class TestGradeUcursosView(GradeTestBase):
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'asdasdsads'
+            'instructor_tab': 'true',
+            'assig_type': 'asdasdsads',
+            'is_resumen': 'false'
         }
         response = self.client_data_researcher.post(reverse('gradeucursos-export:data'), post_data)
         r = json.loads(response._container[0].decode())
@@ -316,6 +384,21 @@ class TestGradeUcursosView(GradeTestBase):
         r = json.loads(response._container[0].decode())
         self.assertTrue(r['error_grade_type'])
 
+    def test_gradeucursos_post_wrong_is_resumen(self):
+        """
+            Test gradeucursos post when is_resumen is not boolean type
+        """
+        post_data = {
+            'grade_type': 'wrong_scale',
+            'curso': str(self.course.id),
+            'is_resumen': 'hello world!'
+        }
+        #grade cutoff 50%
+        response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
+        self.assertEqual(response.status_code, 200)
+        r = json.loads(response._container[0].decode())
+        self.assertTrue(r['error_is_resumen'])
+
     def test_gradeucursos_post_user_dont_have_permission(self):
         """
             Test gradeucursos post when user dont have permission to export 
@@ -377,7 +460,10 @@ class TestGradeUcursosView(GradeTestBase):
             self.skipTest("import error uchileedxlogin")
         post_data = {
             'grade_type': 'seven_scale',
-            'curso': str(self.course.id)
+            'curso': str(self.course.id),
+            'instructor_tab': 'false',
+            'assig_type': 'gradeucursos_total',
+            'is_resumen': 'false'
         }
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
@@ -388,6 +474,35 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response_export._container[0].decode())
         self.assertTrue(r2['report_error'])
 
+    @patch('gradeucursos.views.GradeUcursosView.get_grade_cutoff')
+    def test_gradeucursos_post_from_instructor_tab_grade_cutoff_not_defined_in_report(self, grade):
+        """
+            Test gradeucursos post from instructor tab when grade cutoff is not defined
+        """
+        grade.return_value = None
+        try:
+            from unittest.case import SkipTest
+            from uchileedxlogin.models import EdxLoginUser
+            EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        except ImportError:
+            self.skipTest("import error uchileedxlogin")
+        task_input = {
+            'grade_type': 'seven_scale',
+            'course_id': str(self.course.id),
+            'instructor_tab': True,
+            'assig_type': 'gradeucursos_total',
+            'is_resumen': False
+        }
+        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
+            result = task_get_data(
+                None, None, self.course.id,
+                task_input, 'EOL_GRADE_UCURSOS'
+            )
+        report_store = ReportStore.from_config(config_name='GRADES_DOWNLOAD')
+        report_csv_filename = report_store.links_for(self.course.id)[0][0]
+        report_path = report_store.path_to(self.course.id, report_csv_filename)
+        self.assertTrue('_Error_notas_estudiantes_' in report_csv_filename)
+        self.assertTrue('_Error_notas_estudiantes_' in report_path)
 
 class TestGradeUcursosExportView(GradeTestBase):
     def setUp(self):

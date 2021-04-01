@@ -66,15 +66,16 @@ def task_get_data(
     grade_type = task_input["grade_type"]
     assig_type = task_input["assig_type"]
     instructor_tab = task_input['instructor_tab']
+    is_resumen = task_input['is_resumen']
     start_time = time()
     task_progress = TaskProgress(
         action_name,
         1,
         start_time)
 
-    report_grade = GradeUcursosView().get_grade_report(task_input['course_id'], grade_type, assig_type)
+    report_grade, headers = GradeUcursosView().get_grade_report(task_input['course_id'], grade_type, assig_type, is_resumen)
     if instructor_tab:
-        GradeUcursosView().generate_report_instructor_tab(report_grade, course_key)
+        GradeUcursosView().generate_report_instructor_tab(report_grade, course_key, is_resumen, assig_type, headers)
         current_step = {'step': 'Uploading Data Eol Grade UCursos'}
     else:
         data = {'report_grade': report_grade, 'state': ''}
@@ -88,12 +89,12 @@ def task_get_data(
             current_step = {'step': 'Uploading Data Eol Grade UCursos'}
     return task_progress.update_task_state(extra_meta=current_step)
 
-def task_process_data(request, course_id, grade_type, assig_type='gradeucursos_total', instructor_tab=False):
+def task_process_data(request, course_id, grade_type, assig_type='gradeucursos_total', instructor_tab=False, is_resumen=False):
     course_key = CourseKey.from_string(course_id)
     task_type = 'EOL_GRADE_UCURSOS'
     task_class = process_data
-    task_input = {'course_id': course_id, 'grade_type': grade_type, 'assig_type': assig_type, 'instructor_tab':instructor_tab}
-    task_key = "{}_{}_{}".format(course_id, grade_type, assig_type)
+    task_input = {'course_id': course_id, 'grade_type': grade_type, 'assig_type': assig_type, 'instructor_tab':instructor_tab, 'is_resumen':is_resumen}
+    task_key = "{}_{}_{}_{}".format(course_id, grade_type, assig_type, 'is_resumen' if is_resumen else '')
 
     return submit_task(
         request,
@@ -138,6 +139,11 @@ class Content(object):
         if not data['grade_type'] in GRADE_TYPE_LIST:
             error['error_grade_type'] = True
             logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, data['grade_type']))
+        
+        # si is_resumen no es boolean
+        if type(data['is_resumen']) is not bool:
+            error['error_is_resumen'] = True
+            logger.error("GradeUCursos - Wrong is_resumen, user: {}, is_resumen: {}".format(user.id, data['is_resumen']))
 
         try:
             from uchileedxlogin.models import EdxLoginUser
@@ -225,13 +231,24 @@ class GradeUcursosView(View, Content):
             data = {
                 'curso': request.POST.get('curso', ""),
                 'grade_type': request.POST.get("grade_type", ""),
-                'assig_type': request.POST.get("assig_type", ""),
-                'instructor_tab': request.POST.get('instructor_tab', False)
+                'assig_type': request.POST.get("assig_type", "")
             }
+            try:
+                data['instructor_tab'] = json.loads(request.POST.get('instructor_tab', 'false'))
+            except json.decoder.JSONDecodeError:
+                logger.error("GradeUCursos - Wrong instructor_tab, user: {}, instructor_tab: {}".format( request.user, request.POST.get('instructor_tab', 'false')))
+                data['instructor_tab'] = False
+
+            try:
+                data['is_resumen'] = json.loads(request.POST.get('is_resumen', 'false'))
+            except json.decoder.JSONDecodeError:
+                logger.error("GradeUCursos - Wrong is_resumen, user: {}, is_resumen: {}".format( request.user, request.POST.get("is_resumen", 'false')))
+                data['is_resumen'] = 'wrong'
+
             data_error = self.validate_data(request.user, data)
             if len(data_error) == 0:
                 if data['instructor_tab']:
-                    return self.get_data_report_instructor_tab(request, data['curso'], data['grade_type'], data['assig_type'])
+                    return self.get_data_report_instructor_tab(request, data['curso'], data['grade_type'], data['assig_type'], data['is_resumen'])
                 else:
                     return self.get_data_report(request, data['curso'], data['grade_type'])
             else:
@@ -258,19 +275,19 @@ class GradeUcursosView(View, Content):
             return JsonResponse({'report_error': True, 'status': 'Error'})
         return JsonResponse({'status': 'Generated'})
 
-    def get_data_report_instructor_tab(self, request, course_id, grade_type, assig_type):
+    def get_data_report_instructor_tab(self, request, course_id, grade_type, assig_type, is_resumen):
         """
             generate report with task_process for instructor tab
         """
         try:
-            task = task_process_data(request, course_id, grade_type, assig_type=assig_type, instructor_tab=True)
+            task = task_process_data(request, course_id, grade_type, assig_type=assig_type, instructor_tab=True, is_resumen=is_resumen)
             success_status = 'Generating'
             return JsonResponse({"status": success_status, "task_id": task.task_id})
         except AlreadyRunningError:
             logger.error("GradeUCursos - Task Already Running Error, user: {}, course_id: {}".format(request.user, course_id))
             return JsonResponse({'status': 'AlreadyRunningError'})
 
-    def get_grade_report(self, course_id, scale, assig_type):
+    def get_grade_report(self, course_id, scale, assig_type, is_resumen):
         """
             Generate list of all student grade 
             report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
@@ -278,10 +295,11 @@ class GradeUcursosView(View, Content):
         course_key = CourseKey.from_string(course_id)
         grade_cutoff = self.get_grade_cutoff(course_key)
         report_grade = []
+        headers = []
         i=0
         if grade_cutoff is None:
             logger.error('GradeUCursos - grade_cutoff is not defined')
-            return None
+            return None, None
         try:
             enrolled_students = User.objects.filter(
                 courseenrollment__course_id=course_key,
@@ -289,9 +307,9 @@ class GradeUcursosView(View, Content):
             ).order_by('username').values('id', 'username', 'edxloginuser__run')
         except FieldError:
             logger.error('GradeUCursos - UchileEdxLogin not installed')
-            return None
+            return None, None
         for user in enrolled_students:
-            grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff)
+            grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff, is_resumen)
             user_rut = ''
             obs = ''
             if user['edxloginuser__run'] is not None:
@@ -305,36 +323,64 @@ class GradeUcursosView(View, Content):
             else:
                 obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
             report_grade.append([user_rut, obs, grade])
+            if len(headers) == 0 and len(grade) != 0:
+                headers = [x for x in grade]
             i += 1
-        return report_grade
+        return report_grade, headers
 
-    def generate_report_instructor_tab(self, report_grade, course_key):
+    def generate_report_instructor_tab(self, report_grade, course_key, is_resumen, assig_type, headers):
         """
             Generate Excel File
         """
         report_store = ReportStore.from_config('GRADES_DOWNLOAD')
         output = BytesIO()
+        xlsx_name = 'notas_estudiantes'
         workbook = xlsxwriter.Workbook(output)
-        
+    
         worksheet = workbook.add_worksheet()
         # Add a bold format to use to highlight cells.
         bold = workbook.add_format({'bold': True})
         # Write some data headers.
         worksheet.write('A1', 'RUT', bold)
-        worksheet.set_column('A:A', 11)  # Column A width set to 11.
         worksheet.write('B1', 'Observaciones', bold)
-        worksheet.set_column('B:B', 15)  # Column B width set to 15.
-        worksheet.write('C1', 'Nota', bold)
-        row = 1
-        for data in report_grade:
-            worksheet.write(row, 0, data[0])
-            worksheet.write(row, 1, data[1])
-            worksheet.write(row, 2, data[2])
-            row += 1
+        worksheet.write(0,0,'RUT', bold)
+        worksheet.write(0,1,'Observaciones', bold)
+        if report_grade is None:
+            xlsx_name = 'Error_notas_estudiantes'
+        else:
+            if is_resumen:
+                i = 2
+                if assig_type == 'gradeucursos_total':
+                    percents = self._get_assignment_types(course_key)
+                    for h in headers:
+                        if h == 'Prom':
+                            worksheet.write(0,i,'{}'.format(h), bold)
+                        else:
+                            worksheet.write(0,i,'P{} {}% {}'.format(i-1, percents[h]['weight']*100, h), bold)
+                        i += 1
+                else:
+                    for h in headers:
+                        if h == 'Prom':
+                            worksheet.write(0,i,'{}'.format(h), bold)
+                        else:
+                            worksheet.write(0,i,'P{} {}'.format(i-1,h), bold)
+                        i += 1
+            else:
+                worksheet.write(0,2,'Nota', bold)
+            worksheet.set_column('A:A', 11)  # Column A width set to 11.
+            worksheet.set_column('B:B', 15)  # Column B width set to 15.
+            row = 1
+            for data in report_grade:
+                worksheet.write(row, 0, data[0])
+                worksheet.write(row, 1, data[1])
+                i = 2
+                for grade in headers:
+                    worksheet.write(row,i,data[2][grade])
+                    i += 1
+                row += 1
 
         workbook.close()
         start_date = datetime.now(UTC)
-        xlsx_name = 'notas_estudiantes'
         report_name = u"{course_prefix}_{xlsx_name}_{timestamp_str}.xlsx".format(
             course_prefix=course_filename_prefix_generator(course_key),
             xlsx_name=xlsx_name,
@@ -346,36 +392,54 @@ class GradeUcursosView(View, Content):
         data_file = ContentFile(output)
         report_store.store(course_key, report_name, data_file)
 
-    def get_user_scale(self, user, course_key, scale, assig_type, grade_cutoff):
+    def get_user_scale(self, user, course_key, scale, assig_type, grade_cutoff, is_resumen):
         """
             Convert the percentage rating based on the scale
         """
-        percent = self.get_user_grade(user, course_key, assig_type)
-        if percent != '':
+        dict_percent = self.get_user_grade(user, course_key, assig_type, is_resumen)
+        for key in dict_percent:
             if scale == 'seven_scale':
-                return self.grade_percent_scaled(percent, grade_cutoff)
+                dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
             elif scale == 'hundred_scale':
-                return round(percent * 100)
+                dict_percent[key] = round(dict_percent[key] * 100)
             elif scale == 'percent_scale':
-                return round(percent, 2)
-        return ''
+                dict_percent[key] = round(dict_percent[key], 2)
+        return dict_percent
 
-    def get_user_grade(self, user, course_key, assig_type):
+    def get_user_grade(self, user, course_key, assig_type, is_resumen):
         """
             Get user grade
+            return {'Prom': %} or {'Prom': %, 'assig 1': %, 'assig 2': %, 'assig 3': % ...}
         """
         response = CourseGradeFactory().read(user, course_key=course_key)
+        notas = OrderedDict()
         if response is not None:
-            if assig_type == 'gradeucursos_total':
-                return response.percent
+            if is_resumen:
+                if assig_type == 'gradeucursos_total':
+                    for assig in response.summary['section_breakdown']:
+                        if 'prominent' in assig and assig['prominent']:
+                            notas[assig['category']] = assig['percent']
+                    notas['Prom'] = response.percent
+                    return notas
+                else:
+                    for assig in response.summary['section_breakdown']:
+                        if assig['category'] == assig_type and 'prominent' in assig and assig['prominent']:
+                            notas['Prom'] = assig['percent']
+                            break
+                        elif assig['category'] == assig_type:
+                            notas[assig['label']] = assig['percent']
+                    return notas
             else:
-                avg_grade = ''
-                for assig in response.summary['section_breakdown']:
-                    if assig['category'] == assig_type and 'prominent' in assig and assig['prominent']:
-                        avg_grade = assig['percent']
-                        break
-                return avg_grade
-        return ''
+                if assig_type == 'gradeucursos_total':
+                    notas['Prom'] = response.percent
+                    return notas
+                else:
+                    for assig in response.summary['section_breakdown']:
+                        if assig['category'] == assig_type and 'prominent' in assig and assig['prominent']:
+                            notas['Prom'] = assig['percent']
+                            break
+                    return notas
+        return notas
 
     def grade_percent_scaled(self, grade_percent, grade_cutoff):
         """
@@ -408,7 +472,8 @@ class GradeUcursosExportView(View, Content):
                 'curso': request.POST.get('curso', ""),
                 'grade_type': request.POST.get("grade_type", ""),
                 'data_url': reverse('gradeucursos-export:data'),
-                'instructor_tab': False
+                'instructor_tab': False,
+                'is_resumen': False
             }
             data_error = self.validate_data(request.user, context)
             context.update(data_error)
@@ -452,7 +517,10 @@ class GradeUcursosExportView(View, Content):
         for data in report_grade:
             worksheet.write(row, 0, data[0])
             worksheet.write(row, 1, data[1])
-            worksheet.write(row, 2, data[2])
+            if 'Prom' in data[2]:
+                worksheet.write(row, 2, data[2]['Prom'])
+            else:
+                worksheet.write(row, 2, '')
             row += 1
         workbook.close()
 
