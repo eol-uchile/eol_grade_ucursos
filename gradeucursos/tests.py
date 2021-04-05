@@ -81,7 +81,15 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 4):
             percent = GradeUcursosView().get_user_grade(self.student, self.course.id, 'gradeucursos_total', False)
             self.assertEqual(percent, {'Prom':0.25})
-    
+
+    def test_round_half_up(self):
+        """
+            Verify method grade_percent_scaled() work correctly
+        """
+        grades = [1,1.1,1.1,1.2,1.2,1.3,1.3,1.4,1.4,1.5,1.5,1.6,1.6,1.7,1.7,1.8,1.8,1.9,1.9,2,2,2.1,2.1,2.2,2.2,2.3,2.3,2.4,2.4,2.5,2.5,2.6,2.6,2.7,2.7,2.8,2.8,2.9,2.9,3,3,3.1,3.1,3.2,3.2,3.3,3.3,3.4,3.4,3.5,3.5,3.6,3.6,3.7,3.7,3.8,3.8,3.9,3.9,4,4,4.1,4.2,4.2,4.3,4.4,4.5,4.5,4.6,4.7,4.8,4.8,4.9,5,5.1,5.1,5.2,5.3,5.4,5.4,5.5,5.6,5.7,5.7,5.8,5.9,6,6,6.1,6.2,6.3,6.3,6.4,6.5,6.6,6.6,6.7,6.8,6.9,6.9,7]
+        for i in range(101):
+            self.assertEqual(GradeUcursosView().grade_percent_scaled(i/100,0.6), grades[i])
+
     def test_gradeucursos_get(self):
         """
             Test gradeucursos view
@@ -122,9 +130,9 @@ class TestGradeUcursosView(GradeTestBase):
         report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':4.0}])
+        self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, {'Prom':4.0}])
+        self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
     def test_gradeucursos_post_data_researcher(self):
         """
@@ -155,9 +163,9 @@ class TestGradeUcursosView(GradeTestBase):
         report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':4.0}])
+        self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, {'Prom':4.0}])
+        self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
     def test_gradeucursos_post_from_instructor_tab(self):
         """
@@ -236,9 +244,9 @@ class TestGradeUcursosView(GradeTestBase):
         report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        self.assertEqual(report_grade[0], ['9472337-K', '', {'Prom':1.0}])
+        self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':1.0}])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, {'Prom':1.0}])
+        self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':1.0}])
 
     def test_gradeucursos_post_from_instructor_tab_is_resumen(self):
         """
@@ -292,11 +300,10 @@ class TestGradeUcursosView(GradeTestBase):
         report_grade, headers = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', True)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        result = OrderedDict([('Homework', 4.0), ('NoCredit', 1.0), ('Prom', 4.0)])
-        self.assertEqual(report_grade[0], ['9472337-K', '', result])
+        result = OrderedDict([('Homework', 50.0), ('NoCredit', 0.0), ('Prom', 4.0)])
+        self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', result])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', obs, result])
-
+        self.assertEqual(report_grade[1], ['', self.student_2.username, obs, result])
 
     def test_gradeucursos_post_from_instructor_tab_wrong_assig_type(self):
         """

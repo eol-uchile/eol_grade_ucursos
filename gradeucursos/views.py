@@ -44,6 +44,7 @@ from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
 from lms.djangoapps.instructor_task.models import ReportStore
 from django.core.files.base import ContentFile
 from lms.djangoapps.instructor import permissions
+from decimal import Decimal, ROUND_HALF_UP
 logger = logging.getLogger(__name__)
 
 GRADE_TYPE_LIST = ['seven_scale', 'hundred_scale', 'percent_scale']
@@ -322,7 +323,7 @@ class GradeUcursosView(View, Content):
                     obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
             else:
                 obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
-            report_grade.append([user_rut, obs, grade])
+            report_grade.append([user_rut, user['username'], obs, grade])
             if len(headers) == 0 and len(grade) != 0:
                 headers = [x for x in grade]
             i += 1
@@ -344,12 +345,13 @@ class GradeUcursosView(View, Content):
         worksheet.write('A1', 'RUT', bold)
         worksheet.write('B1', 'Observaciones', bold)
         worksheet.write(0,0,'RUT', bold)
-        worksheet.write(0,1,'Observaciones', bold)
+        worksheet.write(0,1,'Username', bold)
+        worksheet.write(0,2,'Observaciones', bold)
         if report_grade is None:
             xlsx_name = 'Error_notas_estudiantes'
         else:
             if is_resumen:
-                i = 2
+                i = 3
                 if assig_type == 'gradeucursos_total':
                     percents = self._get_assignment_types(course_key)
                     for h in headers:
@@ -373,9 +375,10 @@ class GradeUcursosView(View, Content):
             for data in report_grade:
                 worksheet.write(row, 0, data[0])
                 worksheet.write(row, 1, data[1])
-                i = 2
+                worksheet.write(row, 2, data[2])
+                i = 3
                 for grade in headers:
-                    worksheet.write(row,i,data[2][grade])
+                    worksheet.write(row,i,data[3][grade])
                     i += 1
                 row += 1
 
@@ -399,7 +402,10 @@ class GradeUcursosView(View, Content):
         dict_percent = self.get_user_grade(user, course_key, assig_type, is_resumen)
         for key in dict_percent:
             if scale == 'seven_scale':
-                dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
+                if key != 'Prom':
+                    dict_percent[key] = round(dict_percent[key] * 100)
+                else:
+                    dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
             elif scale == 'hundred_scale':
                 dict_percent[key] = round(dict_percent[key] * 100)
             elif scale == 'percent_scale':
@@ -448,8 +454,11 @@ class GradeUcursosView(View, Content):
         if grade_percent == 0.:
             return 1.
         if grade_percent < grade_cutoff:
-            return round(10. * (3. / grade_cutoff * grade_percent + 1.)) / 10.
-        return round((3. / (1. - grade_cutoff) * grade_percent + (7. - (3. / (1. - grade_cutoff)))) * 10.) / 10.
+            return self.round_half_up((Decimal('3') / Decimal(str(grade_cutoff)) * Decimal(str(grade_percent)) + Decimal('1')))
+        return self.round_half_up(Decimal('3') / Decimal(str(1. - grade_cutoff)) * Decimal(str(grade_percent)) + (Decimal('7') - (Decimal('3') / Decimal(str(1. - grade_cutoff)))))
+
+    def round_half_up(self, number):
+        return float(Decimal(str(float(number))).quantize(Decimal('0.1'), ROUND_HALF_UP))
 
 class GradeUcursosExportView(View, Content):
     """

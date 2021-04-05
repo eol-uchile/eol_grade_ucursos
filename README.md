@@ -33,6 +33,7 @@ To enable export grade button in your theme add next file and/or lines code:
                 %else:
                     <p>El porcentaje de aprobación del curso es del: ${section_data['gradeucursos_grade_cutoff']*100} %.</p>
                     <p>Seleccione el tipo, escala y el formato de la(s) nota(s), presione el boton Exportar Notas y se generará un archivo Excel.</p>
+                    <p>NOTA: Al seleccionar el formato "Completo", cada evaluación estará en una escala de 0 - 100 y solamente el promedio final estará con la escala seleccionada.</p>
                     <div class="row"> 
                     <div class="col-md-1" style="padding-left: 0px;margin-top: 15px;">
                         <label for="gradeucursos_assig_type" style="clear: both; font-style: normal; font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif">Tipo de tarea:</label>
