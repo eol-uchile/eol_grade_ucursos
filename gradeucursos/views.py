@@ -402,10 +402,7 @@ class GradeUcursosView(View, Content):
         dict_percent = self.get_user_grade(user, course_key, assig_type, is_resumen)
         for key in dict_percent:
             if scale == 'seven_scale':
-                if key != 'Prom':
-                    dict_percent[key] = round(dict_percent[key] * 100)
-                else:
-                    dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
+                dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
             elif scale == 'hundred_scale':
                 dict_percent[key] = round(dict_percent[key] * 100)
             elif scale == 'percent_scale':

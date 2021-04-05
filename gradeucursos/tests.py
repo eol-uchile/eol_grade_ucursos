@@ -300,7 +300,7 @@ class TestGradeUcursosView(GradeTestBase):
         report_grade, headers = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', True)
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
-        result = OrderedDict([('Homework', 50.0), ('NoCredit', 0.0), ('Prom', 4.0)])
+        result = OrderedDict([('Homework', 4.0), ('NoCredit', 1.0), ('Prom', 4.0)])
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', result])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, result])
