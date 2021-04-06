@@ -102,3 +102,28 @@ To enable export grade button in your theme add next file and/or lines code:
 
     > cd .github/
     > docker-compose run lms /openedx/requirements/eol_grade_ucursos/.github/test.sh
+
+## Notes
+
+Change these lines of code to to get full eol_grade_code:
+
+- Uncomment the line of code 134, 145, 244 in views.py
+- In the line of code 79, change
+
+        GradeUcursosView().generate_report_instructor_tab_temporary(report_grade, course_key, is_resumen, assig_type, headers)
+
+for this
+
+    GradeUcursosView().generate_report_instructor_tab(report_grade, course_key, is_resumen, assig_type, headers)
+
+- Change the line of code 232 in views.py
+
+        data = {
+                'curso': request.POST.get('curso', ""),
+                'grade_type': request.POST.get("grade_type", ""),
+                'assig_type': request.POST.get("assig_type", "")
+            }
+
+- In test.py remove 
+
+        self.skipTest("disabled temporarily")
