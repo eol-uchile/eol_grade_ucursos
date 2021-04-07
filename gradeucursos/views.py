@@ -389,7 +389,7 @@ class GradeUcursosView(View, Content):
         report_name = u"{course_prefix}_{xlsx_name}_{timestamp_str}.xlsx".format(
             course_prefix=course_filename_prefix_generator(course_key),
             xlsx_name=xlsx_name,
-            timestamp_str=start_date.strftime("%Y-%m-%d-%H%M")
+            timestamp_str=start_date.strftime("%Y-%m-%d-%H%M%S")
         )
         # Get the output bytes for creating a django file
         output = output.getvalue()
@@ -449,7 +449,7 @@ class GradeUcursosView(View, Content):
         report_name = u"{course_prefix}_{xlsx_name}_{timestamp_str}.xlsx".format(
             course_prefix=course_filename_prefix_generator(course_key),
             xlsx_name=xlsx_name,
-            timestamp_str=start_date.strftime("%Y-%m-%d-%H%M")
+            timestamp_str=start_date.strftime("%Y-%m-%d-%H%M%S")
         )
         # Get the output bytes for creating a django file
         output = output.getvalue()
