@@ -465,13 +465,13 @@ class GradeUcursosView(View, Content):
         for key in dict_percent:
             if scale == 'seven_scale':
                 if key != 'Prom':
-                    dict_percent[key] = int(Decimal(str(dict_percent[key]*100)).quantize(Decimal('1'), ROUND_HALF_UP))
+                    dict_percent[key] = int(self.grade_percent_ucursos_scaled(dict_percent[key], grade_cutoff)*100)
                 else:
                     dict_percent[key] = self.grade_percent_scaled(dict_percent[key], grade_cutoff)
             elif scale == 'hundred_scale':
-                dict_percent[key] = int(Decimal(str(dict_percent[key]*100)).quantize(Decimal('1'), ROUND_HALF_UP))
+                dict_percent[key] = int(self.grade_percent_ucursos_scaled(dict_percent[key], grade_cutoff)*100)
             elif scale == 'percent_scale':
-                dict_percent[key] = round(dict_percent[key], 2)
+                dict_percent[key] = self.grade_percent_ucursos_scaled(dict_percent[key], grade_cutoff)
         return dict_percent
 
     def get_user_grade(self, user, course_key, assig_type, is_resumen):
@@ -521,6 +521,13 @@ class GradeUcursosView(View, Content):
 
     def round_half_up(self, number):
         return float(Decimal(str(float(number))).quantize(Decimal('0.1'), ROUND_HALF_UP))
+
+    def grade_percent_ucursos_scaled(self, grade_percent, grade_cutoff):
+        """
+            EOL: Scale grade percent by grade cutoff to grade percent by grade cutoff = 50%
+        """
+        grade = self.grade_percent_scaled(grade_percent, grade_cutoff)
+        return float(Decimal(str((1/6)*(grade-1))).quantize(Decimal('0.01'), ROUND_HALF_UP))
 
 class GradeUcursosExportView(View, Content):
     """

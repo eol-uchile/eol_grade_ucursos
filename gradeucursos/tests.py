@@ -91,6 +91,24 @@ class TestGradeUcursosView(GradeTestBase):
         for i in range(101):
             self.assertEqual(GradeUcursosView().grade_percent_scaled(i/100,0.6), grades[i])
 
+    def test_grade_percent_ucursos_scaled(self):
+        """
+            Verify method grade_percent_ucursos_scaled() work correctly
+        """
+        for i in range(101):
+            grade_percent = i/100
+            grade_percent_50 = GradeUcursosView().grade_percent_ucursos_scaled(grade_percent,0.6)
+            grade_scaled_1 = GradeUcursosView().grade_percent_scaled(grade_percent,0.6)
+            grade_scaled_2 = GradeUcursosView().grade_percent_scaled(grade_percent_50,0.5)
+            self.assertEqual(grade_scaled_1,grade_scaled_2)
+
+        for i in range(101):
+            grade_percent = i/100
+            grade_percent_50 = GradeUcursosView().grade_percent_ucursos_scaled(grade_percent,0.7)
+            grade_scaled_1 = GradeUcursosView().grade_percent_scaled(grade_percent,0.7)
+            grade_scaled_2 = GradeUcursosView().grade_percent_scaled(grade_percent_50,0.5)
+            self.assertEqual(grade_scaled_1,grade_scaled_2)
+
     def test_gradeucursos_get(self):
         """
             Test gradeucursos view
