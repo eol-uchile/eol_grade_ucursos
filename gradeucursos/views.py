@@ -305,7 +305,8 @@ class GradeUcursosView(View, Content):
         try:
             enrolled_students = User.objects.filter(
                 courseenrollment__course_id=course_key,
-                courseenrollment__mode='honor'
+                courseenrollment__mode='honor',
+                courseenrollment__is_active=1
             ).order_by('username').values('id', 'username', 'edxloginuser__run')
         except FieldError:
             logger.error('GradeUCursos - UchileEdxLogin not installed')
