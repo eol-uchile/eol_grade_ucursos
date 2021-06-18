@@ -28,9 +28,9 @@ from numpy import around
 from six import itervalues
 from django.urls import reverse
 from opaque_keys import InvalidKeyError
-from courseware.courses import get_course_by_id, get_course_with_access
+from lms.djangoapps.courseware.courses import get_course_by_id, get_course_with_access
 from common.djangoapps.util.file import course_filename_prefix_generator
-from courseware.access import has_access
+from lms.djangoapps.courseware.access import has_access
 from django.core.exceptions import FieldError
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
 from django.core.cache import cache

@@ -87,13 +87,13 @@ To enable export grade button in your theme add next file and/or lines code:
 
 - In your edx-platform add the following code in the function '_section_data_download' in _edx-platform/lms/djangoapps/instructor/views/instructor_dashboard.py_
 
-        <try:
-            from gradeucursos import views
+        try:
+            from gradeucursos import views as gradeucursos_views
             section_data['has_gradeucursos'] = True
             section_data['gradeucursos_url_data'] = reverse('gradeucursos-export:data')
-            section_data['gradeucursos_course'] = six.text_type(course_key)
-            section_data['gradeucursos_grade_cutoff'] = views.Content().get_grade_cutoff(course_key)
-            section_data['gradeucursos_assig_types'] = views.Content()._get_assignment_types(course_key)
+            section_data['gradeucursos_course'] = str(course_key)
+            section_data['gradeucursos_grade_cutoff'] = gradeucursos_views.Content().get_grade_cutoff(course_key)
+            section_data['gradeucursos_assig_types'] = gradeucursos_views.Content()._get_assignment_types(course_key)
         except ImportError:
             section_data['has_gradeucursos'] = False
 

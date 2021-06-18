@@ -8,11 +8,11 @@ from django.test import Client
 from django.conf import settings
 from django.contrib.auth.models import User
 from opaque_keys.edx.locator import CourseLocator
-from student.tests.factories import CourseEnrollmentAllowedFactory, UserFactory, CourseEnrollmentFactory
+from common.djangoapps.student.tests.factories import CourseEnrollmentAllowedFactory, UserFactory, CourseEnrollmentFactory
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from student.roles import CourseInstructorRole, CourseStaffRole
+from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from .views import GradeUcursosView, GradeUcursosExportView, task_get_data
 from lms.djangoapps.grades.tests.utils import mock_get_score
 from lms.djangoapps.grades.tests.base import GradeTestBase
@@ -27,7 +27,7 @@ class TestGradeUcursosView(GradeTestBase):
     def setUp(self):
         super(TestGradeUcursosView, self).setUp()
         self.grade_factory = CourseGradeFactory()
-        with patch('student.models.cc.User.save'):
+        with patch('common.djangoapps.student.models.cc.User.save'):
             # staff user
             self.client_instructor = Client()
             self.client_student = Client()
@@ -527,7 +527,7 @@ class TestGradeUcursosExportView(GradeTestBase):
     def setUp(self):
         super(TestGradeUcursosExportView, self).setUp()
         self.grade_factory = CourseGradeFactory()
-        with patch('student.models.cc.User.save'):
+        with patch('common.djangoapps.student.models.cc.User.save'):
             # staff user
             self.client_instructor = Client()
             self.client_student = Client()
