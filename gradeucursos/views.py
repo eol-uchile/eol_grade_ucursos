@@ -27,8 +27,8 @@ import xlsxwriter
 
 # Edx dependencies
 from common.djangoapps.util.file import course_filename_prefix_generator
-from courseware.access import has_access
-from courseware.courses import get_course_by_id, get_course_with_access
+from lms.djangoapps.courseware.access import has_access
+from lms.djangoapps.courseware.courses import get_course_by_id, get_course_with_access
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
 from lms.djangoapps.instructor import permissions
 from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError, submit_task

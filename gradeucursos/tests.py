@@ -24,7 +24,7 @@ class TestGradeUcursosView(GradeTestBase):
     def setUp(self):
         super(TestGradeUcursosView, self).setUp()
         self.grade_factory = CourseGradeFactory()
-        with patch('student.models.cc.User.save'):
+        with patch('common.djangoapps.student.models.cc.User.save'):
             # staff user
             self.client_instructor = Client()
             self.client_student = Client()
@@ -351,7 +351,7 @@ class TestGradeUcursosExportView(GradeTestBase):
     def setUp(self):
         super(TestGradeUcursosExportView, self).setUp()
         self.grade_factory = CourseGradeFactory()
-        with patch('student.models.cc.User.save'):
+        with patch('common.djangoapps.student.models.cc.User.save'):
             # staff user
             self.client_instructor = Client()
             self.client_student = Client()
