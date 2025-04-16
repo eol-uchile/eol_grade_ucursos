@@ -1,50 +1,43 @@
 #!/usr/bin/env python
 # -- coding: utf-8 --
-
-from django.conf import settings
-from django.shortcuts import render
-from django.views.generic.base import View
-from opaque_keys.edx.keys import CourseKey, UsageKey
-from django.http import Http404, HttpResponse, JsonResponse
-
-from collections import OrderedDict, defaultdict
-from django.core.exceptions import FieldError
-from django.contrib.auth.models import User
-from functools import partial
+# Python Standard Libraries
+from collections import OrderedDict
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+from functools import partial
 from io import BytesIO
 from time import time
-from pytz import UTC
-import requests
 import json
-import six
-import hashlib
-import os
-import io
-
 import logging
-import xlsxwriter
-from numpy import around
-from six import itervalues
+
+# Installed packages (via pip)
+from celery import task
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.core.exceptions import FieldError
+from django.core.files.base import ContentFile
+from django.db import transaction
+from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import render
 from django.urls import reverse
-from opaque_keys import InvalidKeyError
-from courseware.courses import get_course_by_id, get_course_with_access
+from django.utils.translation import ugettext_noop
+from django.views.generic.base import View
+from pytz import UTC
+import xlsxwriter
+
+# Edx dependencies
 from common.djangoapps.util.file import course_filename_prefix_generator
 from courseware.access import has_access
-from django.core.exceptions import FieldError
+from courseware.courses import get_course_by_id, get_course_with_access
 from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
-from django.core.cache import cache
-from celery import current_task, task
-from lms.djangoapps.instructor_task.tasks_base import BaseInstructorTask
-from lms.djangoapps.instructor_task.api_helper import submit_task
-from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
-from django.db import IntegrityError, transaction
-from django.utils.translation import ugettext_noop
-from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError
-from lms.djangoapps.instructor_task.models import ReportStore
-from django.core.files.base import ContentFile
 from lms.djangoapps.instructor import permissions
-from decimal import Decimal, ROUND_HALF_UP
+from lms.djangoapps.instructor_task.api_helper import AlreadyRunningError, submit_task
+from lms.djangoapps.instructor_task.models import ReportStore
+from lms.djangoapps.instructor_task.tasks_base import BaseInstructorTask
+from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
+from opaque_keys import InvalidKeyError
+from opaque_keys.edx.keys import CourseKey
+
 logger = logging.getLogger(__name__)
 
 GRADE_TYPE_LIST = ['seven_scale', 'hundred_scale', 'percent_scale']
@@ -55,7 +48,6 @@ def process_data(entry_id, xmodule_instance_args):
     task_fn = partial(task_get_data, xmodule_instance_args)
 
     return run_main_task(entry_id, task_fn, action_name)
-
 
 def task_get_data(
         _xmodule_instance_args,

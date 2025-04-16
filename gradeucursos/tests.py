@@ -1,27 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from mock import patch, Mock, MagicMock
-from collections import namedtuple
-from django.urls import reverse
-from django.test import TestCase, Client
-from django.test import Client
-from django.conf import settings
-from django.contrib.auth.models import User
-from opaque_keys.edx.locator import CourseLocator
-from student.tests.factories import CourseEnrollmentAllowedFactory, UserFactory, CourseEnrollmentFactory
-from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from student.roles import CourseInstructorRole, CourseStaffRole
-from .views import GradeUcursosView, GradeUcursosExportView, task_get_data
-from lms.djangoapps.grades.tests.utils import mock_get_score
-from lms.djangoapps.grades.tests.base import GradeTestBase
-from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
-from common.djangoapps.student.tests.factories import CourseAccessRoleFactory
-from lms.djangoapps.instructor_task.models import ReportStore
-from collections import OrderedDict, defaultdict
-from unittest.case import SkipTest
+# Python Standard Libraries
+from collections import OrderedDict
 import json
+
+# Installed packages (via pip)
+from django.test import  Client
+from django.urls import reverse
+from mock import patch
+
+# Edx dependencies
+from common.djangoapps.student.roles import CourseInstructorRole
+from common.djangoapps.student.tests.factories import CourseAccessRoleFactory, CourseEnrollmentFactory, UserFactory
+from lms.djangoapps.grades.course_grade_factory import CourseGradeFactory
+from lms.djangoapps.grades.tests.base import GradeTestBase
+from lms.djangoapps.grades.tests.utils import mock_get_score
+from lms.djangoapps.instructor_task.models import ReportStore
+
+# Internal project dependencies
+from .views import GradeUcursosView, task_get_data
 
 class TestGradeUcursosView(GradeTestBase):
     def setUp(self):
