@@ -2,10 +2,10 @@ import setuptools
 
 setuptools.setup(
     name="gradeucursos",
-    version="0.0.1",
-    author="Luis Santana",
-    author_email="luis.santana@uchile.cl",
-    description=".",
+    version="1.0.0",
+    author="Oficina EOL UChile",
+    author_email="eol-ing@uchile.cl",
+    description="Allows you to transform an eol grade report to upload grades in your courses.",
     url="https://eol.uchile.cl",
     packages=setuptools.find_packages(),
     install_requires=[
