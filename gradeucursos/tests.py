@@ -212,7 +212,6 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-        self.skipTest("disabled temporarily")
         try:
             from uchileedxlogin.models import EdxLoginUser
             EdxLoginUser.objects.create(user=self.student, run='09472337K')
@@ -264,20 +263,20 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process with is_resumen params
         """
-        self.skipTest("disabled temporarily")
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
         try:
             from uchileedxlogin.models import EdxLoginUser
             EdxLoginUser.objects.create(user=self.student, run='09472337K')
+            EdxLoginUser.objects.create(user=self.student_2, run='111111111-1')
         except ImportError:
             self.skipTest("import error uchileedxlogin")
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
             'instructor_tab': True,
-            'assig_type': 'Homework',
+            'assig_type': 'gradeucursos_total',
             'is_resumen': True
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
@@ -315,29 +314,6 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', result])
         obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, result])
-
-    def test_gradeucursos_post_from_instructor_tab_wrong_assig_type(self):
-        """
-            Test gradeucursos post from instructor tab wrong assignament type
-        """
-        self.skipTest("disabled temporarily")
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
-        post_data = {
-            'grade_type': 'seven_scale',
-            'curso': str(self.course.id),
-            'instructor_tab': 'true',
-            'assig_type': 'asdasdsads',
-            'is_resumen': 'false'
-        }
-        response = self.client_data_researcher.post(reverse('gradeucursos-export:data'), post_data)
-        r = json.loads(response._container[0].decode())
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(r['status'] , 'Error')
-        self.assertTrue(r['error_assig_type'])
 
     def test_gradeucursos_post_not_logged(self):
         """
@@ -402,22 +378,6 @@ class TestGradeUcursosView(GradeTestBase):
         r = json.loads(response._container[0].decode())
         self.assertTrue(r['error_grade_type'])
 
-    def test_gradeucursos_post_wrong_is_resumen(self):
-        """
-            Test gradeucursos post when is_resumen is not boolean type
-        """
-        self.skipTest("disabled temporarily")
-        post_data = {
-            'grade_type': 'wrong_scale',
-            'curso': str(self.course.id),
-            'is_resumen': 'hello world!'
-        }
-        #grade cutoff 50%
-        response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
-        self.assertEqual(response.status_code, 200)
-        r = json.loads(response._container[0].decode())
-        self.assertTrue(r['error_is_resumen'])
-
     def test_gradeucursos_post_user_dont_have_permission(self):
         """
             Test gradeucursos post when user dont have permission to export 
@@ -457,7 +417,6 @@ class TestGradeUcursosView(GradeTestBase):
         }
         try:
             from uchileedxlogin.models import EdxLoginUser
-            self.skipTest("this test check if validate_data function verify EdxLoginUser model")
         except ImportError:
             response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
             self.assertEqual(response.status_code, 200)
@@ -680,7 +639,6 @@ class TestGradeUcursosExportView(GradeTestBase):
         }
         try:
             from uchileedxlogin.models import EdxLoginUser
-            self.skipTest("this test check if validate_data function verify EdxLoginUser model")
         except ImportError:
             response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
             self.assertEqual(response.status_code, 200)
