@@ -5,9 +5,10 @@ from collections import OrderedDict
 import json
 
 # Installed packages (via pip)
-from django.test import  Client
+from django.test import Client
 from django.urls import reverse
 from mock import patch
+from uchileedxlogin.models import EdxLoginUser
 
 # Edx dependencies
 from common.djangoapps.student.roles import CourseInstructorRole
@@ -121,11 +122,8 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -156,11 +154,8 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+    
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -185,11 +180,7 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process
         """
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -212,11 +203,7 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -239,11 +226,8 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -266,12 +250,9 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-            EdxLoginUser.objects.create(user=self.student_2, run='111111111-1')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        EdxLoginUser.objects.create(user=self.student_2, run='111111111-1')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -297,11 +278,7 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -407,33 +384,13 @@ class TestGradeUcursosView(GradeTestBase):
         r = json.loads(response._container[0].decode())
         self.assertTrue(r['error_grade_cutoff'])
 
-    def test_gradeucursos_post_uchileedxlogin_not_installed(self):
-        """
-            Test gradeucursos post when uchileedxlogin is not installed
-        """
-        post_data = {
-            'grade_type': 'seven_scale',
-            'curso': str(self.course.id)
-        }
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-        except ImportError:
-            response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
-            self.assertEqual(response.status_code, 200)
-            r = json.loads(response._container[0].decode())
-            self.assertTrue(r['error_model'])
-
     @patch('gradeucursos.views.GradeUcursosView.get_grade_cutoff')
     def test_gradeucurso_post_grade_cutoff_not_defined_in_report(self, grade):
         """
             Test gradeucursos post when grade cutoff is not defined
         """
         grade.side_effect = [0.5, None, 0.5]
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -456,11 +413,7 @@ class TestGradeUcursosView(GradeTestBase):
             Test gradeucursos post from instructor tab when grade cutoff is not defined
         """
         grade.return_value = None
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -533,11 +486,7 @@ class TestGradeUcursosExportView(GradeTestBase):
         """
             Test gradeucursosexport post normal process
         """
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -628,21 +577,6 @@ class TestGradeUcursosExportView(GradeTestBase):
         response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
         self.assertEqual(response.status_code, 200)
         self.assertTrue('id="error_grade_cutoff"' in response._container[0].decode())
-
-    def test_gradeucursosexport_post_uchileedxlogin_not_installed(self):
-        """
-            Test gradeucursosexport post when uchileedxlogin is not installed
-        """
-        post_data = {
-            'grade_type': 'seven_scale',
-            'curso': str(self.course.id)
-        }
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-        except ImportError:
-            response = self.client_instructor.post(reverse('gradeucursos-export:export'), post_data)
-            self.assertEqual(response.status_code, 200)
-            self.assertTrue('id="error_model"' in response._container[0].decode())
     
     @patch('gradeucursos.views.GradeUcursosView.get_grade_cutoff')
     def test_gradeucursosexport_post_grade_cutoff_not_defined_in_report(self, grade):
@@ -650,11 +584,7 @@ class TestGradeUcursosExportView(GradeTestBase):
             Test gradeucursosexport post when grade cutoff is not defined
         """
         grade.side_effect = [0.5, None, 0.5]
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-            EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        except ImportError:
-            self.skipTest("import error uchileedxlogin")
+        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
