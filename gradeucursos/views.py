@@ -14,7 +14,6 @@ import logging
 from celery import task
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.core.exceptions import FieldError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import Http404, HttpResponse, JsonResponse
@@ -23,6 +22,7 @@ from django.urls import reverse
 from django.utils.translation import ugettext_noop
 from django.views.generic.base import View
 from pytz import UTC
+from uchileedxlogin.services.interface import get_user_id_doc_id_pairs
 import xlsxwriter
 
 # Edx dependencies
@@ -37,6 +37,7 @@ from lms.djangoapps.instructor_task.tasks_base import BaseInstructorTask
 from lms.djangoapps.instructor_task.tasks_helper.runner import run_main_task, TaskProgress
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +75,13 @@ def task_get_data(
         data = {'report_grade': report_grade, 'state': ''}
         if report_grade is None:
             data['state'] = 'error'
-            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 60) #1 minute
+            # 1 minute.
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 60)
             current_step = {'step': 'Error to uploading Data Eol Grade UCursos'}
         else:
             data['state'] = 'success'
-            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 300) #5 minute
+            # 5 minutes.
+            cache.set("eol_grade_ucursos-{}-{}-data".format(task_input["course_id"], grade_type), data, 300)
             current_step = {'step': 'Uploading Data Eol Grade UCursos'}
     return task_progress.update_task_state(extra_meta=current_step)
 
@@ -100,45 +103,37 @@ def task_process_data(request, course_id, grade_type, assig_type='gradeucursos_t
 class Content(object):
     def validate_data(self, user, data):
         error = {}
-        # valida curso
         if data['curso'] == "":
             logger.error("GradeUCursos - Empty course, user: {}".format(user.id))
             error['empty_course'] = True
        
-        # valida si existe el curso
+        # Validate if the course exists.
         else:
             if not self.validate_course(data['curso']):
                 logger.error("GradeUCursos - Course dont exists, user: {}, course_id: {}".format(user.id, data['curso']))
                 error['error_curso'] = True
 
             else:
-                # valida permisos de usuario
+                # Validate user permissions.
                 if not self.user_have_permission(user, data['curso']):
                     logger.error("GradeUCursos - user dont have permission in the course, course: {}, user: {}".format(data['curso'], user))
                     error['user_permission'] = True
                 course_key = CourseKey.from_string(data['curso'])
                 grade_cutoff = self.get_grade_cutoff(course_key)
-                # valida grade_cutoff del curso
+                # Validate the course grade_cutoff.
                 if grade_cutoff is None:
                     logger.error("GradeUCursos - grade_cutoff is not defined, course: {}, user: {}".format(data['curso'], user))
                     error['error_grade_cutoff'] = True
-        # si el grade_type es incorrecto
+        # Validate grade_type.
         if not data['grade_type'] in GRADE_TYPE_LIST:
             error['error_grade_type'] = True
             logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, data['grade_type']))
-        
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-        except ImportError:
-            logger.error("GradeUCursos - UchileEdxLogin not installed, course: {}, user: {}".format(data['curso'], user))
-            error['error_model'] = True
         return error
     
     def validate_course(self, id_curso):
         """
-            Verify if course.id exists
+        Verify if course.id exists.
         """
-        from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
         try:
             aux = CourseKey.from_string(id_curso)
             return CourseOverview.objects.filter(id=aux).exists()
@@ -147,14 +142,14 @@ class Content(object):
 
     def user_have_permission(self, user, course_id):
         """
-            Verify if user is instructor, staff_course or superuser
+        Verify if user is instructor, staff_course or superuser.
         """
         course_key = CourseKey.from_string(course_id)
         return self.is_instructor_or_staff(user, course_key) or user.is_staff
 
     def is_instructor_or_staff(self, user, course_key):
         """
-            Verify if the user is instructor or staff course or data researcher
+        Verify if the user is instructor staff_course or data researcher.
         """
         try:
             course = get_course_with_access(user, "load", course_key)
@@ -166,14 +161,15 @@ class Content(object):
 
     def get_grade_cutoff(self, course_key):
         """
-            Get course grade_cutoffs
+        Get course grade_cutoffs.
         """
-        # Load the course and user objects
+        # Load the course and user objects.
         try:
             course = get_course_by_id(course_key)
-            grade_cutoff = min(course.grade_cutoffs.values())  # Get the min value
+            # Get the min value
+            grade_cutoff = min(course.grade_cutoffs.values())
             return grade_cutoff
-        # For any course or user exceptions, kick the user back to the "Invalid" screen
+        # For any course or user exceptions, kick the user back to the "Invalid" screen.
         except (InvalidKeyError, Http404) as exception:
             error_str = (
                 u"Invalid cert: error finding course %s "
@@ -201,8 +197,8 @@ class Content(object):
 
 class GradeUcursosView(View, Content):
     """
-        Generate and save in cache a list of all student grade
-        report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
+    Generate and save in cache a list of all students grade with the format:
+    report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
     """
     @transaction.non_atomic_requests
     def dispatch(self, args, **kwargs):
@@ -237,7 +233,7 @@ class GradeUcursosView(View, Content):
 
     def get_data_report(self, request, course_id, grade_type):
         """
-            get data from cache or task
+        Get data from cache or task.
         """
         report = cache.get("eol_grade_ucursos-{}-{}-data".format(course_id, grade_type))
         if report is None:
@@ -254,7 +250,7 @@ class GradeUcursosView(View, Content):
 
     def get_data_report_instructor_tab(self, request, course_id, grade_type, assig_type, is_resumen):
         """
-            generate report with task_process for instructor tab
+        Generate report with task_process for instructor tab.
         """
         try:
             task = task_process_data(request, course_id, grade_type, assig_type=assig_type, instructor_tab=True, is_resumen=is_resumen)
@@ -266,8 +262,8 @@ class GradeUcursosView(View, Content):
 
     def get_grade_report(self, course_id, scale, assig_type, is_resumen):
         """
-            Generate list of all student grade 
-            report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
+        Generate list of all student grade
+        report_grade = [['doc_id_student_1','obs',0.6],['doc_id_student_2','obs',0.6],...]
         """
         course_key = CourseKey.from_string(course_id)
         grade_cutoff = self.get_grade_cutoff(course_key)
@@ -277,30 +273,27 @@ class GradeUcursosView(View, Content):
         if grade_cutoff is None:
             logger.error('GradeUCursos - grade_cutoff is not defined')
             return None, None
-        try:
-            enrolled_students = User.objects.filter(
-                courseenrollment__course_id=course_key,
-                courseenrollment__mode='honor',
-                courseenrollment__is_active=1
-            ).order_by('username').values('id', 'username', 'edxloginuser__run')
-        except FieldError:
-            logger.error('GradeUCursos - UchileEdxLogin not installed')
-            return None, None
+        enrolled_students = User.objects.filter(
+            courseenrollment__course_id=course_key,
+            courseenrollment__mode='honor',
+            courseenrollment__is_active=1
+        ).order_by('username').values('id', 'username')
+        user_id_list = enrolled_students.values_list('id', flat=True)
+        user_doc_id = get_user_id_doc_id_pairs(user_id_list)
+        user_doc_id_dict = {id: doc_id for id, doc_id in user_doc_id}
         for user in enrolled_students:
+            user['doc_id'] = user_doc_id_dict.get(user['id'], '')
             grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff, is_resumen)
-            user_rut = ''
             obs = ''
-            if user['edxloginuser__run'] is not None:
+            if user['doc_id'] is not '':
+                # Checks if the doc_id is a rut and if that is the case, it adds a - before the final digit.
                 try:
-                    aux_run = user['edxloginuser__run']
-                    run = str(int(aux_run[:-1])) + '-' + aux_run[-1]
-                    user_rut = run
+                    user['doc_id'] = str(int(user['doc_id'][:-1])) + '-' + user['doc_id'][-1]
                 except ValueError:
-                    user_rut = user['edxloginuser__run']
-                    obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
+                    obs = 'Usuario {} no esta asociado con un rut en la plataforma.'.format(user['username'])
             else:
-                obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
-            report_grade.append([user_rut, user['username'], obs, grade])
+                obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(user['username'])
+            report_grade.append([user['doc_id'], user['username'], obs, grade])
             if len(headers) == 0 and len(grade) != 0:
                 headers = [x for x in grade]
             i += 1
@@ -308,7 +301,7 @@ class GradeUcursosView(View, Content):
 
     def generate_report_instructor_tab(self, report_grade, course_key, is_resumen, assig_type, headers):
         """
-            Generate Excel File with assignament grade in observations column
+        Generate Excel File with assignament grade in observations column.
         """
         report_store = ReportStore.from_config('GRADES_DOWNLOAD')
         output = BytesIO()
@@ -325,9 +318,12 @@ class GradeUcursosView(View, Content):
         worksheet.write(0,1,'Username', bold)
         worksheet.write(0,2,'Observaciones', bold)
         worksheet.write(0,3,'Nota', bold)
-        worksheet.set_column('A:A', 11)  # Column A width set to 11.
-        worksheet.set_column('B:B', 15)  # Column B width set to 15.
-        worksheet.set_column('C:C', 27)  # Column C width set to 27.
+        # Column A width set to 11.
+        worksheet.set_column('A:A', 11)
+        # Column B width set to 15.
+        worksheet.set_column('B:B', 15)
+        # Column C width set to 27.
+        worksheet.set_column('C:C', 27)
         cell_format = workbook.add_format()
         cell_format.set_text_wrap()
         if report_grade is None:
@@ -360,15 +356,15 @@ class GradeUcursosView(View, Content):
             xlsx_name=xlsx_name,
             timestamp_str=start_date.strftime("%Y-%m-%d-%H%M%S")
         )
-        # Get the output bytes for creating a django file
+        # Get the output bytes for creating a django file.
         output = output.getvalue()
-        # Generate the data file
+        # Generate the data file.
         data_file = ContentFile(output)
         report_store.store(course_key, report_name, data_file)
 
     def get_user_scale(self, user, course_key, scale, assig_type, grade_cutoff, is_resumen):
         """
-            Convert the percentage rating based on the scale
+        Convert the percentage rating based on the scale.
         """
         dict_percent = self.get_user_grade(user, course_key, assig_type, is_resumen)
         for key in dict_percent:
@@ -385,8 +381,8 @@ class GradeUcursosView(View, Content):
 
     def get_user_grade(self, user, course_key, assig_type, is_resumen):
         """
-            Get user grade
-            return {'Prom': %} or {'Prom': %, 'assig 1': %, 'assig 2': %, 'assig 3': % ...}
+        Get user grade
+        return {'Prom': %} or {'Prom': %, 'assig 1': %, 'assig 2': %, 'assig 3': % ...}
         """
         response = CourseGradeFactory().read(user, course_key=course_key)
         notas = OrderedDict()
@@ -420,7 +416,7 @@ class GradeUcursosView(View, Content):
 
     def grade_percent_scaled(self, grade_percent, grade_cutoff):
         """
-            EOL: Scale grade percent by grade cutoff. Grade between 1.0 - 7.0
+        Scale grade percent by grade cutoff. Grade between 1.0 - 7.0.
         """
         if grade_percent == 0.:
             return 1.
@@ -429,18 +425,21 @@ class GradeUcursosView(View, Content):
         return self.round_half_up(Decimal('3') / Decimal(str(1. - grade_cutoff)) * Decimal(str(grade_percent)) + (Decimal('7') - (Decimal('3') / Decimal(str(1. - grade_cutoff)))))
 
     def round_half_up(self, number):
+        """
+        Rounds a number to one decimal place using round-half-up.
+        """
         return float(Decimal(str(float(number))).quantize(Decimal('0.1'), ROUND_HALF_UP))
 
     def grade_percent_ucursos_scaled(self, grade_percent, grade_cutoff):
         """
-            EOL: Scale grade percent by grade cutoff to grade percent by grade cutoff = 50%
+        Scale grade percent by grade cutoff to grade percent by grade cutoff = 50%.
         """
         grade = self.grade_percent_scaled(grade_percent, grade_cutoff)
         return float(Decimal(str((1/6)*(grade-1))).quantize(Decimal('0.01'), ROUND_HALF_UP))
 
 class GradeUcursosExportView(View, Content):
     """
-        Export all student grade in .xlsx format
+    Export all student grade in .xlsx format.
     """
 
     def get(self, request):
@@ -485,7 +484,7 @@ class GradeUcursosExportView(View, Content):
     
     def generate_report(self, report_grade, course_id):
         """
-            Generate Excel File
+        Generate Excel File.
         """
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response['Content-Disposition'] = "attachment; filename=notas_estudiantes_{}.xlsx".format(course_id)
@@ -496,9 +495,11 @@ class GradeUcursosExportView(View, Content):
         bold = workbook.add_format({'bold': True})
         # Write some data headers.
         worksheet.write('A1', 'RUT', bold)
-        worksheet.set_column('A:A', 11)  # Column A width set to 11.
+        # Column A width set to 11.
+        worksheet.set_column('A:A', 11)
         worksheet.write('B1', 'Observaciones', bold)
-        worksheet.set_column('B:B', 15)  # Column B width set to 15.
+        # Column B width set to 15.
+        worksheet.set_column('B:B', 15)
         worksheet.write('C1', 'Nota', bold)
         row = 1
         for data in report_grade:
