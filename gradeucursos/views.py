@@ -14,7 +14,6 @@ import logging
 from celery import task
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.core.exceptions import FieldError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import Http404, HttpResponse, JsonResponse
@@ -23,6 +22,7 @@ from django.urls import reverse
 from django.utils.translation import ugettext_noop
 from django.views.generic.base import View
 from pytz import UTC
+from uchileedxlogin.services.interface import get_user_id_doc_id_pairs
 import xlsxwriter
 
 # Edx dependencies
@@ -126,12 +126,6 @@ class Content(object):
         if not data['grade_type'] in GRADE_TYPE_LIST:
             error['error_grade_type'] = True
             logger.error("GradeUCursos - Wrong grade_type, user: {}, grade_type: {}".format(user.id, data['grade_type']))
-        
-        try:
-            from uchileedxlogin.models import EdxLoginUser
-        except ImportError:
-            logger.error("GradeUCursos - UchileEdxLogin not installed, course: {}, user: {}".format(data['curso'], user))
-            error['error_model'] = True
         return error
     
     def validate_course(self, id_curso):
@@ -277,30 +271,27 @@ class GradeUcursosView(View, Content):
         if grade_cutoff is None:
             logger.error('GradeUCursos - grade_cutoff is not defined')
             return None, None
-        try:
-            enrolled_students = User.objects.filter(
-                courseenrollment__course_id=course_key,
-                courseenrollment__mode='honor',
-                courseenrollment__is_active=1
-            ).order_by('username').values('id', 'username', 'edxloginuser__run')
-        except FieldError:
-            logger.error('GradeUCursos - UchileEdxLogin not installed')
-            return None, None
+        enrolled_students = User.objects.filter(
+            courseenrollment__course_id=course_key,
+            courseenrollment__mode='honor',
+            courseenrollment__is_active=1
+        ).order_by('username').values('id', 'username')
+        user_id_list = enrolled_students.values_list('id', flat=True)
+        user_doc_id = get_user_id_doc_id_pairs(user_id_list)
+        user_doc_id_dict = {id: doc_id for id, doc_id in user_doc_id}
         for user in enrolled_students:
+            user['doc_id'] = user_doc_id_dict.get(user['id'], '')
             grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff, is_resumen)
-            user_rut = ''
             obs = ''
-            if user['edxloginuser__run'] is not None:
+            if user['doc_id'] is not '':
+                # Checks if the doc_id is a rut and if that is the case, it adds a - before the final digit.
                 try:
-                    aux_run = user['edxloginuser__run']
-                    run = str(int(aux_run[:-1])) + '-' + aux_run[-1]
-                    user_rut = run
+                    user['doc_id'] = str(int(user['doc_id'][:-1])) + '-' + user['doc_id'][-1]
                 except ValueError:
-                    user_rut = user['edxloginuser__run']
-                    obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
+                    obs = 'Usuario {} no esta asociado con un rut en la plataforma.'.format(user['username'])
             else:
-                obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(user['username'])
-            report_grade.append([user_rut, user['username'], obs, grade])
+                obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(user['username'])
+            report_grade.append([user['doc_id'], user['username'], obs, grade])
             if len(headers) == 0 and len(grade) != 0:
                 headers = [x for x in grade]
             i += 1
