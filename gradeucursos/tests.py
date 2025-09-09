@@ -8,7 +8,6 @@ import json
 from django.test import Client
 from django.urls import reverse
 from mock import patch
-from uchileedxlogin.models import EdxLoginUser
 
 # Edx dependencies
 from common.djangoapps.student.roles import CourseInstructorRole
@@ -115,15 +114,15 @@ class TestGradeUcursosView(GradeTestBase):
         request = response.request
         self.assertEqual(response.status_code, 405)
 
-    def test_gradeucursos_post(self):
+    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
+    def test_gradeucursos_post(self, mock_user_id_doc_id_pairs):
         """
             Test gradeucursos post normal process
         """
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -144,10 +143,11 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
-        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
-    def test_gradeucursos_post_data_researcher(self):
+    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
+    def test_gradeucursos_post_data_researcher(self, mock_user_id_doc_id_pairs):
         """
             Test gradeucursos post normal process with data researcher role
         """
@@ -155,7 +155,7 @@ class TestGradeUcursosView(GradeTestBase):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
     
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -173,14 +173,13 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
-        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
     def test_gradeucursos_post_from_instructor_tab(self):
         """
             Test gradeucursos post from instructor tab normal process
         """
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -203,7 +202,6 @@ class TestGradeUcursosView(GradeTestBase):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -222,12 +220,12 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue('_notas_estudiantes_' in report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_path)
 
-    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self):
+    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
+    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self, mock_user_id_doc_id_pairs):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -240,7 +238,7 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':1.0}])
-        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':1.0}])
 
     def test_gradeucursos_post_from_instructor_tab_is_resumen(self):
@@ -251,8 +249,6 @@ class TestGradeUcursosView(GradeTestBase):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
 
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
-        EdxLoginUser.objects.create(user=self.student_2, run='111111111-1')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -271,14 +267,15 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue('_notas_estudiantes_' in report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_path)
 
-    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self):
+    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
+    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self, mock_user_id_doc_id_pairs):
         """
             Test gradeucursos post from instructor tab normal process with is_resumen params
         """
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
+        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -289,7 +286,7 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertEqual(len(report_grade), 2)
         result = OrderedDict([('Homework', 50.0), ('NoCredit', 0.0), ('Prom', 4.0)])
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', result])
-        obs = 'Usuario {} no tiene rut asociado en la plataforma.'.format(self.student_2.username)
+        obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, result])
 
     def test_gradeucursos_post_not_logged(self):
@@ -390,7 +387,6 @@ class TestGradeUcursosView(GradeTestBase):
             Test gradeucursos post when grade cutoff is not defined
         """
         grade.side_effect = [0.5, None, 0.5]
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -413,7 +409,6 @@ class TestGradeUcursosView(GradeTestBase):
             Test gradeucursos post from instructor tab when grade cutoff is not defined
         """
         grade.return_value = None
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
@@ -486,7 +481,6 @@ class TestGradeUcursosExportView(GradeTestBase):
         """
             Test gradeucursosexport post normal process
         """
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -584,7 +578,6 @@ class TestGradeUcursosExportView(GradeTestBase):
             Test gradeucursosexport post when grade cutoff is not defined
         """
         grade.side_effect = [0.5, None, 0.5]
-        EdxLoginUser.objects.create(user=self.student, run='09472337K')
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
