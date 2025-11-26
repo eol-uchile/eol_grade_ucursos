@@ -22,7 +22,7 @@ from django.urls import reverse
 from django.utils.translation import ugettext_noop
 from django.views.generic.base import View
 from pytz import UTC
-from uchileedxlogin.services.interface import get_user_id_doc_id_pairs
+from eol_sso.services.interface import get_user_id_with_indiv_id_list
 import xlsxwriter
 
 # Edx dependencies
@@ -198,7 +198,7 @@ class Content(object):
 class GradeUcursosView(View, Content):
     """
     Generate and save in cache a list of all students grade with the format:
-    report_grade = [['rut_student_1','obs',0.6],['rut_student_2','obs',0.6],...]
+    report_grade = [['indiv_id_student_1', username_student_1, 'obs', 0.6],['indiv_id_student_2', username_student_2, 'obs' ,0.6],...]
     """
     @transaction.non_atomic_requests
     def dispatch(self, args, **kwargs):
@@ -263,7 +263,7 @@ class GradeUcursosView(View, Content):
     def get_grade_report(self, course_id, scale, assig_type, is_resumen):
         """
         Generate list of all student grade
-        report_grade = [['doc_id_student_1','obs',0.6],['doc_id_student_2','obs',0.6],...]
+        report_grade = [['indiv_id_student_1', username_student_1, 'obs', 0.6],['indiv_id_student_2', username_student_2, 'obs' ,0.6],...]
         """
         course_key = CourseKey.from_string(course_id)
         grade_cutoff = self.get_grade_cutoff(course_key)
@@ -279,21 +279,21 @@ class GradeUcursosView(View, Content):
             courseenrollment__is_active=1
         ).order_by('username').values('id', 'username')
         user_id_list = enrolled_students.values_list('id', flat=True)
-        user_doc_id = get_user_id_doc_id_pairs(user_id_list)
-        user_doc_id_dict = {id: doc_id for id, doc_id in user_doc_id}
+        user_id_indiv_id_list = get_user_id_with_indiv_id_list(user_id_list)
+        user_indiv_id_dict = {user_id: indiv_id for user_id, indiv_id in user_id_indiv_id_list}
         for user in enrolled_students:
-            user['doc_id'] = user_doc_id_dict.get(user['id'], '')
+            user['indiv_id'] = user_indiv_id_dict.get(user['id'], '')
             grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff, is_resumen)
             obs = ''
-            if user['doc_id'] is not '':
-                # Checks if the doc_id is a rut and if that is the case, it adds a - before the final digit.
+            if user['indiv_id'] is not '':
+                # Checks if the indiv_id is a rut and if that is the case, it adds a - before the final digit.
                 try:
-                    user['doc_id'] = str(int(user['doc_id'][:-1])) + '-' + user['doc_id'][-1]
+                    user['indiv_id'] = str(int(user['indiv_id'][:-1])) + '-' + user['indiv_id'][-1]
                 except ValueError:
                     obs = 'Usuario {} no esta asociado con un rut en la plataforma.'.format(user['username'])
             else:
                 obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(user['username'])
-            report_grade.append([user['doc_id'], user['username'], obs, grade])
+            report_grade.append([user['indiv_id'], user['username'], obs, grade])
             if len(headers) == 0 and len(grade) != 0:
                 headers = [x for x in grade]
             i += 1
