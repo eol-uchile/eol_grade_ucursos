@@ -114,15 +114,15 @@ class TestGradeUcursosView(GradeTestBase):
         request = response.request
         self.assertEqual(response.status_code, 405)
 
-    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
-    def test_gradeucursos_post(self, mock_user_id_doc_id_pairs):
+    @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
+    def test_gradeucursos_post(self, mock_user_id_with_indiv_id_list):
         """
             Test gradeucursos post normal process
         """
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
+        mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -146,8 +146,8 @@ class TestGradeUcursosView(GradeTestBase):
         obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
-    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
-    def test_gradeucursos_post_data_researcher(self, mock_user_id_doc_id_pairs):
+    @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
+    def test_gradeucursos_post_data_researcher(self, mock_user_id_with_indiv_id_list):
         """
             Test gradeucursos post normal process with data researcher role
         """
@@ -155,7 +155,7 @@ class TestGradeUcursosView(GradeTestBase):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
     
-        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
+        mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
@@ -220,12 +220,12 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue('_notas_estudiantes_' in report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_path)
 
-    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
-    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self, mock_user_id_doc_id_pairs):
+    @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
+    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self, mock_user_id_with_indiv_id_list):
         """
             Test gradeucursos post from instructor tab normal process with assignament
         """
-        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
+        mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
@@ -267,15 +267,15 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue('_notas_estudiantes_' in report_csv_filename)
         self.assertTrue('_notas_estudiantes_' in report_path)
 
-    @patch('gradeucursos.views.get_user_id_doc_id_pairs')
-    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self, mock_user_id_doc_id_pairs):
+    @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
+    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self, mock_user_id_with_indiv_id_list):
         """
             Test gradeucursos post from instructor tab normal process with is_resumen params
         """
         with mock_get_score(1, 2):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
             self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        mock_user_id_doc_id_pairs.return_value = [(self.student.id, '09472337K')]
+        mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id)
