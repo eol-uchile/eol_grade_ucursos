@@ -285,7 +285,7 @@ class GradeUcursosView(View, Content):
             user['indiv_id'] = user_indiv_id_dict.get(user['id'], '')
             grade = self.get_user_scale(User.objects.get(id=user['id']), course_key, scale, assig_type, grade_cutoff, is_resumen)
             obs = ''
-            if user['indiv_id'] is not '':
+            if user['indiv_id'] != '':
                 # Checks if the indiv_id is a rut and if that is the case, it adds a - before the final digit.
                 try:
                     user['indiv_id'] = str(int(user['indiv_id'][:-1])) + '-' + user['indiv_id'][-1]
