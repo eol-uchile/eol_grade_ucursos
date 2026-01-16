@@ -468,7 +468,7 @@ class GradeUcursosExportView(View, Content):
         worksheet.write('A1', 'RUT', bold)
         # Column A width set to 11.
         worksheet.set_column('A:A', 11)
-        worksheet.write('B1', 'Observaciones', bold)
+        worksheet.write('B1', 'Username', bold)
         # Column B width set to 15.
         worksheet.set_column('B:B', 15)
         worksheet.write('C1', 'Nota', bold)
@@ -476,8 +476,8 @@ class GradeUcursosExportView(View, Content):
         for data in report_grade:
             worksheet.write(row, 0, data[0])
             worksheet.write(row, 1, data[1])
-            if 'Prom' in data[2]:
-                worksheet.write(row, 2, data[2]['Prom'])
+            if 'Prom' in data[3]:
+                worksheet.write(row, 2, data[3]['Prom'])
             else:
                 worksheet.write(row, 2, '')
             row += 1
