@@ -2,17 +2,11 @@ function generate_data_gradeucursos(input){
     cleanGradeUcursos()
     var success_div = document.getElementById('gradeucursos-success-msg');
     var error_div = document.getElementById('gradeucursos-error-msg');
+    var supportEmail = error_div.dataset.supportEmail;
     var warning_div = document.getElementById('gradeucursos-warning-msg');
-    var is_resumen = false
-    var aux_is_resumen = document.getElementById('gradeucursos_is_resumen').value
-    if(aux_is_resumen == 'is_resumen'){
-      is_resumen = true
-    }
     var report_data = {
-        'curso': document.getElementById('gradeucursos_curso').value,
+        'curso': input.getAttribute('data-course-id'),
         'grade_type': document.getElementById('gradeucursos_grade_type').value,
-        'assig_type': document.getElementById('gradeucursos_assig_type').value,
-        'is_resumen': is_resumen,
         'instructor_tab': true
     }
     var post_url = document.getElementById('gradeucursos_data_button').dataset.endpoint;
@@ -35,7 +29,8 @@ function generate_data_gradeucursos(input){
             }
         },
         error: function() {
-            error_div.textContent = 'Error al exportar las notas, actualice la página e intentelo nuevamente, si el error persiste contáctese con la mesa de ayuda(eol-ayuda@uchile.cl).'
+            var errorMessage = 'Error al exportar las notas, actualice la página e intentelo nuevamente, si el error persiste contáctese con la mesa de ayuda {supportEmail}.';  
+            error_div.textContent = errorMessage;
             error_div.style.display = "block";
         }
     })
@@ -58,7 +53,8 @@ function GradeUcursosDataError(data){
         error_msg.textContent = 'Este curso no tiene configurado el porcentaje de aprobación.'
       }
       else{
-        error_msg.textContent = 'Error al exportar las notas, actualice la página e intentelo nuevamente, si el error persiste contáctese con la mesa de ayuda(eol-ayuda@uchile.cl).'
+        var errorMessage = 'Error al exportar las notas, actualice la página e intentelo nuevamente, si el error persiste contáctese con la mesa de ayuda {supportEmail}.';
+        error_msg.textContent = errorMessage;
       }
     }
     error_msg.style.display = "block";
