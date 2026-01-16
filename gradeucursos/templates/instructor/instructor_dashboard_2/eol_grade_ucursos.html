@@ -1,0 +1,62 @@
+<%page expression_filter="h"/>
+<%namespace name='static' file='/static_content.html'/>
+<%!
+from django.conf import settings
+from django.urls import reverse
+from django.utils.translation import ugettext as _
+from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
+%>
+<%
+gradeucursos_url = reverse('gradeucursos-export:data')
+if studio_url:
+  cleaned_studio_url = studio_url.lstrip('/').split('/', 1)[0]
+  grading_url = f'https://{cleaned_studio_url}/settings/grading/{course.id}'
+from_email = configuration_helpers.get_value('email_from_address', settings.DEFAULT_FROM_EMAIL)
+%>
+<script type="text/javascript" src="${static.url('gradeucursos/js/gradeucursos.js')}"></script>
+<link rel="stylesheet" type="text/css" href="${static.url('gradeucursos/css/gradeucursos.css')}"/>
+
+<div class='gradeucursos-export'>
+  <h4 class="hd hd-4">${_("Export grades")}</h4>
+  %if grading_url:
+    <p>
+      <a href="${ grading_url }" target="_blank">
+        ${_("View grade settings")}
+      </a>
+    </p>
+  %endif
+  <p>${_("Select the grade scale, press 'Export Grades' button and it will generate an Excel file.")}</p>
+  <p>${_("NOTE: If select scale '0 - 100' or '0.00 - 1.00', the obtained score of each student will be transformed to a score with approbation percentage of 50%")}</p>
+
+<div class="row mt-3">
+  <div class="col-md-2 pl-0">
+    <label for="gradeucursos_grade_type">
+      ${_("Grade Scale:")}
+    </label>
+  </div>
+  <div class="col-md-4 pl-0">
+    <select class="gradeucursos_select" name="gradeucursos_grade_type" id="gradeucursos_grade_type">
+      <option value="seven_scale">1.0 - 7.0</option>
+      <option value="hundred_scale">0 - 100</option>
+      <option value="percent_scale">0.00 - 1.00</option>
+    </select>
+  </div>
+</div>
+
+<div class="row mt-3">
+  <div class="col-md-2"></div>
+  <div class="col-md-4 pl-0">
+    <button type="button" 
+            id="gradeucursos_data_button" 
+            class="gradeucursos-btn-style" 
+            onclick="generate_data_gradeucursos(this)" 
+            data-endpoint="${ gradeucursos_url }"
+            data-course-id="${ course.id }">
+      ${_("Export Grades")}
+    </button>
+  </div>
+</div>
+
+<div class="gradeucursos-success-msg" id="gradeucursos-success-msg"></div>
+<div class="gradeucursos-warning-msg" id="gradeucursos-warning-msg"></div>
+<div class="gradeucursos-error-msg" id="gradeucursos-error-msg" data-support-email="${from_email}"></div>
