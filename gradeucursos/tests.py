@@ -77,7 +77,7 @@ class TestGradeUcursosView(GradeTestBase):
         with mock_get_score(1, 4):
             self.grade_factory.update(self.student, self.course, force_update_subsections=True)
         with mock_get_score(1, 4):
-            percent = GradeUcursosView().get_user_grade(self.student, self.course.id, 'gradeucursos_total', False)
+            percent = GradeUcursosView().get_user_grade(self.student, self.course.id)
             self.assertEqual(percent, {'Prom':0.25})
 
     def test_round_half_up(self):
@@ -126,9 +126,7 @@ class TestGradeUcursosView(GradeTestBase):
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
-            'instructor_tab': 'false',
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': 'false'
+            'instructor_tab': 'false'
         }
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
@@ -139,7 +137,7 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
@@ -169,45 +167,21 @@ class TestGradeUcursosView(GradeTestBase):
         r2 = json.loads(response2._container[0].decode())
         self.assertEqual(response2.status_code, 200)
         self.assertEqual(r2['status'] , 'Generated')
-        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':4.0}])
         obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':4.0}])
 
-    def test_gradeucursos_post_from_instructor_tab(self):
+    def test_gradeucursos_task_get_data(self):
         """
-            Test gradeucursos post from instructor tab normal process
-        """
-        task_input = {
-            'grade_type': 'seven_scale',
-            'course_id': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': False
-        }
-        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
-            result = task_get_data(
-                None, None, self.course.id,
-                task_input, 'EOL_GRADE_UCURSOS'
-            )
-        report_store = ReportStore.from_config(config_name='GRADES_DOWNLOAD')
-        report_csv_filename = report_store.links_for(self.course.id)[0][0]
-        report_path = report_store.path_to(self.course.id, report_csv_filename)
-        self.assertTrue('_notas_estudiantes_' in report_csv_filename)
-        self.assertTrue('_notas_estudiantes_' in report_path)
-
-    def test_gradeucursos_post_from_instructor_tab_assig_type(self):
-        """
-            Test gradeucursos post from instructor tab normal process with assignament
+            Test gradeucursos task_get_data for EOL_GRADE_UCURSOS report
         """
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'Homework',
-            'is_resumen': False
+            'instructor_tab': True
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = task_get_data(
@@ -221,73 +195,23 @@ class TestGradeUcursosView(GradeTestBase):
         self.assertTrue('_notas_estudiantes_' in report_path)
 
     @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
-    def test_gradeucursos_post_from_instructor_tab_assig_type_data(self, mock_user_id_with_indiv_id_list):
+    def test_gradeucursos_post_from_instructor_tab(self, mock_user_id_with_indiv_id_list):
         """
-            Test gradeucursos post from instructor tab normal process with assignament
+            Test gradeucursos post from instructor tab normal process
         """
         mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
-            'instructor_tab': 'true',
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': 'false'
+            'instructor_tab': 'true'
         }
         #grade cutoff 50%
-        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', False)
+        report_grade, _ = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'])
         self.assertTrue(report_grade is not None)
         self.assertEqual(len(report_grade), 2)
         self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', {'Prom':1.0}])
         obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
         self.assertEqual(report_grade[1], ['', self.student_2.username, obs, {'Prom':1.0}])
-
-    def test_gradeucursos_post_from_instructor_tab_is_resumen(self):
-        """
-            Test gradeucursos post from instructor tab normal process with is_resumen params
-        """
-        with mock_get_score(1, 2):
-            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
-            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-
-        task_input = {
-            'grade_type': 'seven_scale',
-            'course_id': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': True
-        }
-        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
-            result = task_get_data(
-                None, None, self.course.id,
-                task_input, 'EOL_GRADE_UCURSOS'
-            )
-        report_store = ReportStore.from_config(config_name='GRADES_DOWNLOAD')
-        report_csv_filename = report_store.links_for(self.course.id)[0][0]
-        report_path = report_store.path_to(self.course.id, report_csv_filename)
-        self.assertTrue('_notas_estudiantes_' in report_csv_filename)
-        self.assertTrue('_notas_estudiantes_' in report_path)
-
-    @patch('gradeucursos.views.get_user_id_with_indiv_id_list')
-    def test_gradeucursos_post_from_instructor_tab_is_resumen_data(self, mock_user_id_with_indiv_id_list):
-        """
-            Test gradeucursos post from instructor tab normal process with is_resumen params
-        """
-        with mock_get_score(1, 2):
-            self.grade_factory.update(self.student, self.course, force_update_subsections=True)
-            self.grade_factory.update(self.student_2, self.course, force_update_subsections=True)
-        mock_user_id_with_indiv_id_list.return_value = [(self.student.id, '09472337K')]
-        post_data = {
-            'grade_type': 'seven_scale',
-            'curso': str(self.course.id)
-        }
-        #grade cutoff 50%
-        report_grade, headers = GradeUcursosView().get_grade_report(post_data['curso'], post_data['grade_type'], 'gradeucursos_total', True)
-        self.assertTrue(report_grade is not None)
-        self.assertEqual(len(report_grade), 2)
-        result = OrderedDict([('Homework', 50.0), ('NoCredit', 0.0), ('Prom', 4.0)])
-        self.assertEqual(report_grade[0], ['9472337-K', self.student.username, '', result])
-        obs = 'Usuario {} no tiene un documento de identidad asociado en la plataforma.'.format(self.student_2.username)
-        self.assertEqual(report_grade[1], ['', self.student_2.username, obs, result])
 
     def test_gradeucursos_post_not_logged(self):
         """
@@ -390,9 +314,7 @@ class TestGradeUcursosView(GradeTestBase):
         post_data = {
             'grade_type': 'seven_scale',
             'curso': str(self.course.id),
-            'instructor_tab': 'false',
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': 'false'
+            'instructor_tab': 'false'
         }
         #grade cutoff 50%
         response = self.client_instructor.post(reverse('gradeucursos-export:data'), post_data)
@@ -412,9 +334,7 @@ class TestGradeUcursosView(GradeTestBase):
         task_input = {
             'grade_type': 'seven_scale',
             'course_id': str(self.course.id),
-            'instructor_tab': True,
-            'assig_type': 'gradeucursos_total',
-            'is_resumen': False
+            'instructor_tab': True
         }
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = task_get_data(
