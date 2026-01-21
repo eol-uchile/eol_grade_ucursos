@@ -1,0 +1,55 @@
+# Spanish (Latin America) translations for OPEN.
+# Copyright (C) 2025 EOL
+# This file is distributed under the same license as the OPEN project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: OPEN 0.1.0\n"
+"Report-Msgid-Bugs-To: eol-ing@uchile.cl\n"
+"POT-Creation-Date: 2026-01-19 20:04+0000\n"
+"PO-Revision-Date: 2025-12-15 19:36+0000\n"
+"Last-Translator: EOL <eol-ing@uchile.cl>\n"
+"Language: es_419\n"
+"Language-Team: es_419 <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: gradeucursos/templates/gradeucursos/data.html:7
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:55
+msgid "Export Grades"
+msgstr "Exportar Notas"
+
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:20
+msgid "Export grades"
+msgstr "Exportar notas"
+
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:24
+msgid "View grade settings"
+msgstr "Ver la configuración de calificaciones"
+
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:28
+msgid ""
+"Select the grade scale, press 'Export Grades' button and it will generate"
+" an Excel file."
+msgstr ""
+"Seleccione la escala de calificaciones, pulse el botón \"Exportar notas\""
+" y se generará un archivo Excel."
+
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:29
+msgid ""
+"NOTE: If select scale '0 - 100' or '0.00 - 1.00', the obtained score of "
+"each student will be transformed to a score with approbation percentage "
+"of 50%"
+msgstr ""
+"NOTA: Al seleccionar la escala '0 - 100' o '0.00 - 1.00' el puntaje "
+"obtenido de cada estudiante será transformado a un puntaje con porcentaje"
+" de aprobación del 50%"
+
+#: gradeucursos/templates/instructor/instructor_dashboard_2/eol_grade_ucursos.html:34
+msgid "Grade Scale:"
+msgstr "Escala de Notas:"
+
